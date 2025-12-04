@@ -1,0 +1,301 @@
+﻿/* ===== MINIMAL MODERN NAVIGATION HOVER EFFECTS ===== */
+
+/* Enhanced Navigation Item Hover Effects */
+.nav-item-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-item-hover:hover {
+  background-color: rgba(45, 94, 255, 0.08) !important;
+  color: var(--primary-blue) !important;
+  transform: translateX(4px) scale(1.02);
+  border-left: 3px solid var(--primary-blue);
+  padding-left: calc(var(--space-3) - 3px);
+  box-shadow: 0 2px 8px rgba(45, 94, 255, 0.1);
+}
+
+.nav-item-hover:hover svg {
+  transform: scale(1.1);
+  color: var(--primary-blue);
+  transition: all 0.2s ease;
+}
+
+.nav-item-hover.enterprise-nav-item-active {
+  background-color: rgba(45, 94, 255, 0.1);
+  color: var(--primary-blue);
+  border-left: 3px solid var(--primary-blue);
+  padding-left: calc(var(--space-3) - 3px);
+}
+
+.nav-item-hover.enterprise-nav-item-active:hover {
+  background-color: rgba(45, 94, 255, 0.15) !important;
+  transform: translateX(2px) scale(1.01);
+}
+
+/* User Avatar and Profile Hover Effects */
+.user-avatar-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.user-avatar-hover:hover {
+  transform: scale(1.05);
+  filter: drop-shadow(0 4px 8px rgba(45, 94, 255, 0.2));
+}
+
+.user-avatar-hover:hover .status-indicator {
+  animation: status-pulse 2s infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0);
+  }
+}
+
+/* Header Button Hover Effects */
+.header-nav-button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.header-nav-button:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(45, 94, 255, 0.15) !important;
+}
+
+.header-nav-button:hover svg {
+  transform: scale(1.1);
+}
+
+/* Notification Badge Animation */
+.notification-badge {
+  animation: badge-pulse 2s infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+  }
+}
+
+/* Settings Button Enhanced Hover Effect */
+.settings-button-hover:hover {
+  background-color: rgba(45, 94, 255, 0.1) !important;
+  transform: scale(1.1) rotate(45deg) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  color: var(--primary-blue) !important;
+}
+
+/* Dropdown Menu Animations */
+.business-dropdown {
+  animation: dropdown-slide 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: top;
+}
+
+@keyframes dropdown-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.business-dropdown-item:hover {
+  background-color: rgba(45, 94, 255, 0.05) !important;
+  transform: translateX(2px);
+  transition: all 0.15s ease;
+}
+
+/* Mobile Hamburger Menu Enhanced */
+.mobile-menu-button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-menu-button:hover {
+  transform: translateY(-1px) scale(1.05);
+  background: linear-gradient(135deg, rgba(45, 94, 255, 0.1), rgba(44, 197, 167, 0.1)) !important;
+}
+
+/* User Menu Button Hover */
+.user-menu-button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.user-menu-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(45, 94, 255, 0.15) !important;
+}
+
+.user-menu-button:hover .user-avatar {
+  transform: scale(1.05);
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .nav-item-hover,
+  .user-avatar-hover,
+  .header-nav-button,
+  .settings-button-hover,
+  .mobile-menu-button,
+  .user-menu-button {
+    transition: none !important;
+    transform: none !important;
+    animation: none !important;
+  }
+  
+  .nav-item-hover:hover,
+  .user-avatar-hover:hover,
+  .header-nav-button:hover,
+  .settings-button-hover:hover,
+  .mobile-menu-button:hover,
+  .user-menu-button:hover {
+    transform: none !important;
+  }
+  
+  .notification-badge {
+    animation: none !important;
+  }
+}
+
+/* Hover effects for mobile touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .nav-item-hover:hover,
+  .user-avatar-hover:hover,
+  .header-nav-button:hover,
+  .settings-button-hover:hover {
+    transform: none;
+  }
+  
+  .nav-item-hover:active {
+    background-color: rgba(45, 94, 255, 0.12) !important;
+    transform: scale(0.98);
+  }
+  
+  .header-nav-button:active {
+    transform: scale(0.95);
+  }
+}
+
+
+/* ===== NAVIGATION PERFORMANCE ===== */
+
+/**
+ * Navigation Performance Styles
+ * Optimizes navigation transitions and loading states
+ */
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Navigation loading indicator animations */
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.navigation-loading-indicator {
+  animation: slideDown 0.3s ease-out;
+}
+
+/* Page transition optimizations */
+.page-transition {
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+
+.page-transition-entering {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-transition-entered {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.page-transition-exiting {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* Optimize rendering performance */
+.navigation-optimized {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Reduce layout thrashing during navigation */
+.navigation-container {
+  contain: layout style paint;
+}
+
+/* Smooth focus transitions */
+.navigation-focus {
+  transition: all 0.15s ease-in-out;
+}
+
+.navigation-focus:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Loading state optimizations */
+.loading-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Prevent flash of unstyled content during navigation */
+.navigation-preload {
+  visibility: hidden;
+}
+
+.navigation-preload.loaded {
+  visibility: visible;
+}
+
+/* Optimize scroll performance */
+.scroll-optimized {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Reduce paint operations during navigation */
+.navigation-paint-optimized {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
