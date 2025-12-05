@@ -1,2 +1,0 @@
-"""Financial calculation tests package"""
-
