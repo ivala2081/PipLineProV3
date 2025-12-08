@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Flask
+instance/
+.webassets-cache
+
+# Database
+# Ignore all database files - use migrations instead!
+*.db
+*.sqlite
+*.sqlite3
+
+# Database files should NOT be committed to git
+# Instead, use migrations (migrations/versions/*.py) to track database structure
+# Use seed scripts (scripts/seed_database.py) for initial data
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups
+backups/*.db
+backups/*.sql
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~.nib
+
+# Node modules (frontend)
+node_modules/
+frontend/node_modules/
+
+# Build files
+dist/
+build/
+*.egg-info/
+
+# Flask-Migrate migration versions (keep structure, ignore auto-generated files)
+migrations/versions/*.pyc
+migrations/versions/__pycache__/
+
+# But keep the versions directory structure
+!migrations/versions/.gitkeep
+
+# Static uploads
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Temporary scripts (one-time use)
+*_debug.py
+*_temp.py
+sync_*.py

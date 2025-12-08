@@ -1,0 +1,234 @@
+/* ===== PROFESSIONAL BUSINESS CSS VARIABLES ===== */
+
+:root {
+  /* Professional Color Palette - Clean White & Blue Theme */
+  --business-primary: #2563eb;
+  --business-primary-light: #3b82f6;
+  --business-primary-dark: #1d4ed8;
+  --business-secondary: #64748b;
+  --business-accent: #0ea5e9;
+  
+  /* Status Colors */
+  --business-success: #10b981;
+  --business-warning: #f59e0b;
+  --business-danger: #ef4444;
+  --business-info: #06b6d4;
+  
+  /* Clean White & Gray Scale */
+  --business-white: #ffffff;
+  --business-gray-50: #f8fafc;
+  --business-gray-100: #f1f5f9;
+  --business-gray-200: #e2e8f0;
+  --business-gray-300: #cbd5e1;
+  --business-gray-400: #94a3b8;
+  --business-gray-500: #64748b;
+  --business-gray-600: #475569;
+  --business-gray-700: #334155;
+  --business-gray-800: #1e293b;
+  --business-gray-900: #0f172a;
+  
+  /* Professional Typography */
+  --business-font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --business-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  /* Professional Spacing */
+  --business-spacing-xs: 0.25rem;
+  --business-spacing-sm: 0.5rem;
+  --business-spacing-md: 1rem;
+  --business-spacing-lg: 1.5rem;
+  --business-spacing-xl: 2rem;
+  --business-spacing-2xl: 3rem;
+  
+  /* Professional Border Radius */
+  --business-radius-sm: 0.375rem;
+  --business-radius-md: 0.5rem;
+  --business-radius-lg: 0.75rem;
+  --business-radius-xl: 1rem;
+  --business-radius-2xl: 1.5rem;
+  
+  /* Professional Shadows */
+  --business-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --business-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --business-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --business-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  
+  /* Professional Transitions */
+  --business-transition-fast: 0.15s ease;
+  --business-transition-normal: 0.3s ease;
+  --business-transition-slow: 0.5s ease;
+}
+
+/* ===== PROFESSIONAL THEME OVERRIDES ===== */
+
+/* Clean Business Theme - Primary Theme */
+.color-scheme-business {
+  --color-primary: var(--business-primary);
+  --color-secondary: var(--business-secondary);
+  --color-accent: var(--business-accent);
+  --color-success: var(--business-success);
+  --color-warning: var(--business-warning);
+  --color-danger: var(--business-danger);
+  --color-info: var(--business-info);
+  
+  /* Clean White Backgrounds */
+  --color-bg: var(--business-white);
+  --color-surface: var(--business-white);
+  --color-surface-secondary: var(--business-gray-50);
+  --color-border: var(--business-gray-200);
+  --color-text: var(--business-gray-800);
+  --color-text-secondary: var(--business-gray-600);
+  --color-text-muted: var(--business-gray-600);
+  
+  /* Professional Shadows */
+  --color-shadow: var(--business-shadow-sm);
+  --color-shadow-strong: var(--business-shadow-lg);
+  
+  /* Clean Sidebar */
+  --color-sidebar: var(--business-primary);
+  --color-sidebar-text: var(--business-white);
+  --color-sidebar-hover: var(--business-primary-light);
+}
+
+/* Modern Clean Theme */
+.color-scheme-modern {
+  --color-primary: #2563eb;
+  --color-secondary: #64748b;
+  --color-accent: #0ea5e9;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #06b6d4;
+  
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-text: #1e293b;
+  --color-text-secondary: #64748b;
+  --color-text-muted: #64748b;
+  
+  --color-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  --color-shadow-strong: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  
+  --color-sidebar: #2563eb;
+  --color-sidebar-text: white;
+  --color-sidebar-hover: #3b82f6;
+}
+
+/* Minimal Theme */
+.color-scheme-minimal {
+  --color-primary: #1e40af;
+  --color-secondary: #6b7280;
+  --color-accent: #0284c7;
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #0891b2;
+  
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #f9fafb;
+  --color-border: #d1d5db;
+  --color-text: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #6b7280;
+  
+  --color-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --color-shadow-strong: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  
+  --color-sidebar: #1e40af;
+  --color-sidebar-text: white;
+  --color-sidebar-hover: #2563eb;
+}
+
+/* ===== PROFESSIONAL UTILITY CLASSES ===== */
+
+/* Color Utilities */
+.text-primary { color: var(--business-primary) !important; }
+.text-secondary { color: var(--business-secondary) !important; }
+.text-accent { color: var(--business-accent) !important; }
+.text-success { color: var(--business-success) !important; }
+.text-warning { color: var(--business-warning) !important; }
+.text-danger { color: var(--business-danger) !important; }
+.text-info { color: var(--business-info) !important; }
+
+.bg-primary { background-color: var(--business-primary) !important; }
+.bg-secondary { background-color: var(--business-secondary) !important; }
+.bg-accent { background-color: var(--business-accent) !important; }
+.bg-success { background-color: var(--business-success) !important; }
+.bg-warning { background-color: var(--business-warning) !important; }
+.bg-danger { background-color: var(--business-danger) !important; }
+.bg-info { background-color: var(--business-info) !important; }
+
+/* Clean Background Utilities */
+.bg-white { background-color: var(--business-white) !important; }
+.bg-gray-50 { background-color: var(--business-gray-50) !important; }
+.bg-gray-100 { background-color: var(--business-gray-100) !important; }
+
+/* Spacing Utilities */
+.p-0 { padding: var(--business-spacing-xs) !important; }
+.p-1 { padding: var(--business-spacing-sm) !important; }
+.p-2 { padding: var(--business-spacing-md) !important; }
+.p-3 { padding: var(--business-spacing-lg) !important; }
+.p-4 { padding: var(--business-spacing-xl) !important; }
+.p-5 { padding: var(--business-spacing-2xl) !important; }
+
+.m-0 { margin: var(--business-spacing-xs) !important; }
+.m-1 { margin: var(--business-spacing-sm) !important; }
+.m-2 { margin: var(--business-spacing-md) !important; }
+.m-3 { margin: var(--business-spacing-lg) !important; }
+.m-4 { margin: var(--business-spacing-xl) !important; }
+.m-5 { margin: var(--business-spacing-2xl) !important; }
+
+/* Border Radius Utilities */
+.rounded-none { border-radius: 0 !important; }
+.rounded-sm { border-radius: var(--business-radius-sm) !important; }
+.rounded { border-radius: var(--business-radius-md) !important; }
+.rounded-md { border-radius: var(--business-radius-md) !important; }
+.rounded-lg { border-radius: var(--business-radius-lg) !important; }
+.rounded-xl { border-radius: var(--business-radius-xl) !important; }
+.rounded-2xl { border-radius: var(--business-radius-2xl) !important; }
+
+/* Shadow Utilities */
+.shadow-none { box-shadow: none !important; }
+.shadow-sm { box-shadow: var(--business-shadow-sm) !important; }
+.shadow { box-shadow: var(--business-shadow-md) !important; }
+.shadow-md { box-shadow: var(--business-shadow-md) !important; }
+.shadow-lg { box-shadow: var(--business-shadow-lg) !important; }
+.shadow-xl { box-shadow: var(--business-shadow-xl) !important; }
+
+/* ===== PROFESSIONAL RESPONSIVE UTILITIES ===== */
+
+@media (max-width: 576px) {
+  :root {
+    --business-spacing-md: 0.75rem;
+    --business-spacing-lg: 1rem;
+    --business-spacing-xl: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --business-spacing-xl: 1.75rem;
+    --business-spacing-2xl: 2.5rem;
+  }
+}
+
+@media (max-width: 992px) {
+  :root {
+    --business-spacing-2xl: 2.75rem;
+  }
+}
+
+@media print {
+  :root {
+    --color-bg: white;
+    --color-surface: white;
+    --color-text: black;
+    --color-shadow: none;
+  }
+  
+  * {
+    box-shadow: none !important;
+  }
+} 

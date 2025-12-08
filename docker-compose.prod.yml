@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: . # Keep build context for compatibility, but image takes precedence for pull/up if image is present
+    image: ${IMAGE_NAME:-ghcr.io/pipline-enhanced/pipelinepro:latest}
+    restart: always
+    environment:
+      FLASK_ENV: production
+      DEBUG: "false"
+
