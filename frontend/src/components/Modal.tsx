@@ -105,7 +105,7 @@ const Modal: React.FC<ModalProps> = ({
               className="text-gray-400 hover:text-gray-600 transition-colors"
               aria-label="Close modal"
             >
-              <X className="h-5 w-5" />
+              <X className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
         </div>

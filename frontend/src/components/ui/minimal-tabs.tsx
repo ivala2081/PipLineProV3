@@ -246,7 +246,7 @@ export const ElegantTabItem = forwardRef<HTMLButtonElement, MinimalTabItemProps>
         {Icon && <Icon className="w-4 h-4" />}
         <span>{label}</span>
         {badge && (
-          <span className="ml-1 px-2 py-0.5 text-xs bg-blue-50 text-blue-600 rounded-full transition-colors duration-200 group-hover:bg-blue-100">
+          <span className="ml-1 px-2 py-0.5 text-xs bg-gray-50 text-gray-600 rounded-full transition-colors duration-200 group-hover:bg-gray-100">
             {badge}
           </span>
         )}
@@ -319,7 +319,7 @@ export const ModernTabItem = forwardRef<HTMLButtonElement, MinimalTabItemProps>(
         {Icon && <Icon className="w-4 h-4" />}
         <span>{label}</span>
         {badge && (
-          <span className="ml-1 px-2 py-0.5 text-xs bg-gradient-to-r from-gray-100 to-gray-200 text-gray-600 rounded-full transition-all duration-200 group-hover:from-blue-50 group-hover:to-blue-100 group-hover:text-blue-600">
+          <span className="ml-1 px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full transition-all duration-200 group-hover:bg-gray-200 group-hover:text-gray-700">
             {badge}
           </span>
         )}

@@ -1057,9 +1057,9 @@ const formatDate = (dateString: string) => {
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900">Client Management</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{t('navigation.transactions')}</h1>
                 <p className="text-gray-600 mt-1">
-                  Comprehensive client management and transaction tracking
+                  Transaction tracking and analysis
                 </p>
             </div>
             <div className="flex items-center space-x-3">
@@ -1071,19 +1071,19 @@ const formatDate = (dateString: string) => {
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="grid w-full grid-cols-4 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm">
               <TabsTrigger value="overview" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-                <BarChart3 className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+                <BarChart3 className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
                 <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.overview')}</span>
               </TabsTrigger>
               <TabsTrigger value="transactions" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-                <FileText className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+                <FileText className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
                 <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('navigation.transactions')}</span>
               </TabsTrigger>
               <TabsTrigger value="analytics" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-                <LineChart className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+                <LineChart className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
                 <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.analytics')}</span>
               </TabsTrigger>
               <TabsTrigger value="accounting" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-                <DollarSign className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+                <DollarSign className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
                 <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.accounting')}</span>
               </TabsTrigger>
             </TabsList>
@@ -1134,14 +1134,14 @@ const formatDate = (dateString: string) => {
                       <DollarSign className="h-8 w-8 text-purple-500" />
                     </div>
                   </div>
-                  <div className="p-4 bg-orange-50 rounded-lg">
+                  <div className="p-4 bg-gray-50 rounded-lg">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-orange-600">Commission</p>
-                        <p className="text-2xl font-bold text-orange-900">₺48K</p>
-                        <p className="text-xs text-orange-500">+15% from last month</p>
+                        <p className="text-sm font-medium text-gray-600">Commission</p>
+                        <p className="text-2xl font-bold text-gray-900">₺48K</p>
+                        <p className="text-xs text-gray-500">+15% from last month</p>
                       </div>
-                      <TrendingUp className="h-8 w-8 text-orange-500" />
+                      <TrendingUp className="h-8 w-8 text-gray-500" />
                     </div>
                   </div>
                 </div>
@@ -1268,7 +1268,7 @@ const formatDate = (dateString: string) => {
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center">
                     <Filter className="h-4 w-4 text-white" />
                   </div>
                   <div>
@@ -1289,8 +1289,9 @@ const formatDate = (dateString: string) => {
                     size="sm"
                     onClick={() => setShowFilters(false)}
                     className="text-slate-500 hover:text-slate-700"
+                    aria-label="Close filters"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -1312,13 +1313,14 @@ const formatDate = (dateString: string) => {
                 <div className="space-y-2">
                   <label className="block text-sm font-semibold text-slate-700">{t('transactions.search')}</label>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" aria-hidden="true" />
                     <Input
                       type="text"
                       placeholder="Search transactions..."
                       value={filters.search}
                       onChange={(e) => handleFilterChange('search', e.target.value)}
                       className="pl-10 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
+                      aria-label="Search transactions"
                     />
                   </div>
                 </div>
@@ -1327,12 +1329,13 @@ const formatDate = (dateString: string) => {
                 <div className="space-y-2">
                   <label className="block text-sm font-semibold text-slate-700">Start Date</label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" aria-hidden="true" />
                     <Input
                       type="date"
                       value={filters.date_from}
                       onChange={(e) => handleFilterChange('date_from', e.target.value)}
                       className="pl-10 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
+                      aria-label="Start date"
                     />
                   </div>
                 </div>
@@ -1643,18 +1646,50 @@ const formatDate = (dateString: string) => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {transactions.map((transaction) => (
-                        <tr key={transaction.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
+                        <tr 
+                          key={transaction.id} 
+                          className="hover:bg-gray-50 cursor-pointer transition-colors"
+                          onClick={(e) => {
+                            // Don't navigate if clicking on checkbox, buttons, or inside action buttons
+                            const target = e.target as HTMLElement;
+                            
+                            // Check if clicking on checkbox or in checkbox column
+                            if (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
+                              return;
+                            }
+                            if (target.closest('[data-checkbox-cell="true"]')) {
+                              return;
+                            }
+                            
+                            // Check if clicking on button or inside button
+                            if (target.closest('button')) {
+                              return;
+                            }
+                            
+                            // Check if clicking in the actions column (using data attribute)
+                            if (target.closest('[data-action-cell="true"]')) {
+                              return;
+                            }
+                            
+                            // Navigate to client detail page
+                            if (transaction.client_name) {
+                              navigate(`/clients/${encodeURIComponent(transaction.client_name)}`);
+                            }
+                          }}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap" data-checkbox-cell="true">
                             <input
                               type="checkbox"
                               checked={selectedTransactions.includes(transaction.id)}
                               onChange={(e) => {
+                                e.stopPropagation();
                                 if (e.target.checked) {
                                   setSelectedTransactions(prev => [...prev, transaction.id]);
                                 } else {
                                   setSelectedTransactions(prev => prev.filter(id => id !== transaction.id));
                                 }
                               }}
+                              onClick={(e) => e.stopPropagation()}
                               className="rounded border-gray-300"
                             />
                           </td>
@@ -1708,12 +1743,19 @@ const formatDate = (dateString: string) => {
                               {formatDate(transaction.created_at || transaction.date || '')}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap text-sm font-medium" 
+                            data-action-cell="true"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="flex items-center space-x-2">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleViewDetails(transaction)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewDetails(transaction);
+                                }}
                                 className="text-blue-600 hover:text-blue-900"
                               >
                                 <Eye className="h-4 w-4" />
@@ -1721,7 +1763,10 @@ const formatDate = (dateString: string) => {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleEditTransaction(transaction)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditTransaction(transaction);
+                                }}
                                 className="text-green-600 hover:text-green-900"
                               >
                                 <Edit className="h-4 w-4" />
@@ -1729,7 +1774,10 @@ const formatDate = (dateString: string) => {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleDeleteTransaction(transaction.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteTransaction(transaction.id);
+                                }}
                                 className="text-red-600 hover:text-red-900"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -1962,14 +2010,14 @@ const formatDate = (dateString: string) => {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Total Revenue */}
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                  <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                     <div className="flex items-center justify-between mb-4">
-                      <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                        <DollarSign className="h-6 w-6 text-green-600" />
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                        <DollarSign className="h-6 w-6 text-gray-600" />
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-medium text-green-600">{t('transactions.total_revenue')}</p>
-                        <p className="text-2xl font-bold text-green-900">
+                        <p className="text-sm font-medium text-gray-600">{t('transactions.total_revenue')}</p>
+                        <p className="text-2xl font-bold text-gray-900">
                           {formatCurrency(
                             transactions.reduce((sum, t) => sum + (t.amount > 0 ? t.amount : 0), 0),
                             'TL'
@@ -1977,14 +2025,14 @@ const formatDate = (dateString: string) => {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center text-sm text-green-700">
+                    <div className="flex items-center text-sm text-gray-700">
                       <TrendingUp className="h-4 w-4 mr-1" />
                       <span>All time revenue</span>
                     </div>
                   </div>
 
                   {/* Total Commissions */}
-                  <div className="bg-gradient-to-br from-gray-50 to-indigo-50 rounded-xl p-6 border border-gray-200">
+                  <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                     <div className="flex items-center justify-between mb-4">
                       <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
                         <CreditCard className="h-6 w-6 text-gray-600" />
@@ -2006,14 +2054,14 @@ const formatDate = (dateString: string) => {
                   </div>
 
                   {/* Net Profit */}
-                  <div className="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border border-purple-200">
+                  <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                     <div className="flex items-center justify-between mb-4">
-                      <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                        <BarChart3 className="h-6 w-6 text-purple-600" />
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                        <BarChart3 className="h-6 w-6 text-gray-600" />
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-medium text-purple-600">Net Profit</p>
-                        <p className="text-2xl font-bold text-purple-900">
+                        <p className="text-sm font-medium text-gray-600">Net Profit</p>
+                        <p className="text-2xl font-bold text-gray-900">
                           {formatCurrency(
                             transactions.reduce((sum, t) => sum + t.net_amount, 0),
                             'TL'
@@ -2021,26 +2069,26 @@ const formatDate = (dateString: string) => {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center text-sm text-purple-700">
+                    <div className="flex items-center text-sm text-gray-700">
                       <TrendingUp className="h-4 w-4 mr-1" />
                       <span>After commissions</span>
                     </div>
                   </div>
 
                   {/* Total Transactions */}
-                  <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-6 border border-orange-200">
+                  <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                     <div className="flex items-center justify-between mb-4">
-                      <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                        <FileText className="h-6 w-6 text-orange-600" />
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                        <FileText className="h-6 w-6 text-gray-600" />
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-medium text-orange-600">{t('transactions.total_transactions')}</p>
-                        <p className="text-2xl font-bold text-orange-900">
+                        <p className="text-sm font-medium text-gray-600">{t('transactions.total_transactions')}</p>
+                        <p className="text-2xl font-bold text-gray-900">
                           {loadMoreState.total.toLocaleString()}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center text-sm text-orange-700">
+                    <div className="flex items-center text-sm text-gray-700">
                       <TrendingUp className="h-4 w-4 mr-1" />
                       <span>All transactions</span>
                     </div>

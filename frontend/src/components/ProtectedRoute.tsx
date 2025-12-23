@@ -59,15 +59,18 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     }
   }
 
-  // Check admin requirement
-  if (requireAdmin && user && user.admin_level === 0) {
-    return (
-      <Navigate
-        to='/dashboard'
-        state={{ message: 'Access denied. Admin privileges required.' }}
-        replace
-      />
-    );
+  // Check admin requirement - user must have admin_level > 0 OR role === 'admin'
+  if (requireAdmin && user) {
+    const isAdmin = user.role?.toLowerCase() === 'admin' || (user.admin_level !== undefined && user.admin_level >= 1 && user.admin_level <= 3);
+    if (!isAdmin) {
+      return (
+        <Navigate
+          to='/dashboard'
+          state={{ message: 'Access denied. Admin privileges required.' }}
+          replace
+        />
+      );
+    }
   }
 
   // Check specific permission

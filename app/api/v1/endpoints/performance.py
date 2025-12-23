@@ -274,19 +274,64 @@ def get_status():
         query_stats = query_optimizer.get_query_stats()
         
         # Database pool stats
+        db_pool_stats = {}
+        db_stats = {}
         try:
             db_stats = query_optimizer.get_database_stats()
             db_pool_stats = db_stats.get('connection_pool', {}) if isinstance(db_stats, dict) else {}
+            
+            # If connection_pool is not in db_stats, try to get it directly from the engine
+            if not db_pool_stats or db_pool_stats.get('size', 0) == 0:
+                try:
+                    from app import db
+                    pool = db.engine.pool
+                    db_pool_stats = {
+                        'size': pool.size(),
+                        'checked_out': pool.checkedout(),
+                        'checked_in': pool.checkedin(),
+                        'overflow': pool.overflow(),
+                    }
+                    # Update db_stats with pool info
+                    if isinstance(db_stats, dict):
+                        db_stats['connection_pool'] = db_pool_stats
+                except Exception as pool_error:
+                    logger.debug(f"Could not get pool stats directly: {pool_error}")
         except Exception as e:
             logger.warning(f"Failed to get database pool stats: {e}")
-            db_pool_stats = {}
-            db_stats = {}
+            # Try to get pool stats directly as fallback
+            try:
+                from app import db
+                pool = db.engine.pool
+                db_pool_stats = {
+                    'size': pool.size(),
+                    'checked_out': pool.checkedout(),
+                    'checked_in': pool.checkedin(),
+                    'overflow': pool.overflow(),
+                }
+            except Exception as pool_error:
+                logger.debug(f"Could not get pool stats as fallback: {pool_error}")
+                db_pool_stats = {}
         
         # Calculate cache hit rate
         hits = cache_stats.get('hits', 0)
         misses = cache_stats.get('misses', 0)
         total_requests = hits + misses
         hit_rate = (hits / total_requests * 100) if total_requests > 0 else 0
+        
+        # Calculate application performance metrics from query stats
+        total_queries = query_stats.get('total_queries', 0)
+        error_count = query_stats.get('error_count', 0)
+        avg_query_time = query_stats.get('avg_query_time', 0) or query_stats.get('average_query_time', 0)
+        
+        # Calculate requests per second (estimate based on queries per minute)
+        # This is a rough estimate - in a real scenario, you'd track actual HTTP requests
+        requests_per_second = round(total_queries / 60.0, 2) if total_queries > 0 else 0
+        
+        # Average response time in milliseconds (from query time or default)
+        avg_response_time = round(avg_query_time * 1000, 2) if avg_query_time > 0 else 0
+        
+        # Error rate percentage
+        error_rate = round((error_count / total_queries * 100), 2) if total_queries > 0 else 0
         
         # Build response matching frontend expectations
         response = {
@@ -304,9 +349,9 @@ def get_status():
                 'hit_rate': round(hit_rate, 2),
                 'hits': hits,
                 'misses': misses,
-                'requests_per_second': cache_stats.get('requests_per_second', 0),
-                'avg_response_time': cache_stats.get('avg_response_time', 0),
-                'error_rate': cache_stats.get('error_rate', 0),
+                'requests_per_second': requests_per_second,
+                'avg_response_time': avg_response_time,
+                'error_rate': error_rate,
                 'redis_available': cache_stats.get('redis_available', False),
                 'memory_cache_entries': cache_stats.get('memory_cache_entries', 0)
             },
@@ -410,8 +455,8 @@ def get_alerts():
     Now uses centralized AlertingService
     """
     try:
-        # Import alerting service
-        from app.services.alerting_service import alerting_service
+        # Import alerting service (lightweight in-memory alert manager)
+        from app.services.alerting_service import alerting_service, AlertLevel
         
         # Gather current system state
         cpu_percent = psutil.cpu_percent(interval=1)
@@ -461,23 +506,49 @@ def get_alerts():
         total_queries = query_stats.get('total_queries', 0)
         error_rate = (error_count / total_queries * 100) if total_queries > 0 else 0
         
-        # Generate all alerts
-        alerts = alerting_service.generate_all_alerts(
-            health_data=health_data,
-            error_rate=error_rate,
-            total_requests=total_queries,
-            metrics=metrics,
-            cache_metrics=cache_stats
-        )
-        
-        # Get active alerts
-        active_alerts = alerting_service.get_active_alerts()
-        alert_summary = alerting_service.get_alert_summary()
-        
-        # Format alerts for frontend
+        # Feed current metrics into alerting service (this app's AlertingService API)
+        alerting_service.check_system_metrics({'system': metrics['system']})
+        alerting_service.check_error_rate(error_count=error_count, total_requests=total_queries)
+
+        # Recent alerts (return as "active" for UI; UI can choose to show latest N)
+        recent_alerts = alerting_service.get_recent_alerts(limit=50)
+        alert_stats = alerting_service.get_alert_stats()
+
+        # Format alerts for frontend (match PerformanceAlert interface)
         formatted_alerts = []
-        for alert in active_alerts:
-            formatted_alerts.append(alert.to_dict())
+        for alert in recent_alerts:
+            # Map AlertLevel to frontend type and severity
+            level_to_type = {
+                AlertLevel.INFO: 'info',
+                AlertLevel.WARNING: 'warning',
+                AlertLevel.ERROR: 'error',
+                AlertLevel.CRITICAL: 'error'
+            }
+            level_to_severity = {
+                AlertLevel.INFO: 'low',
+                AlertLevel.WARNING: 'medium',
+                AlertLevel.ERROR: 'high',
+                AlertLevel.CRITICAL: 'critical'
+            }
+            
+            formatted_alert = {
+                'id': f"alert_{alert.timestamp.timestamp()}_{hash(alert.message)}",
+                'type': level_to_type.get(alert.level, 'info'),
+                'message': f"{alert.title}: {alert.message}" if alert.title != alert.message else alert.message,
+                'timestamp': alert.timestamp.isoformat(),
+                'severity': level_to_severity.get(alert.level, 'low'),
+                'resolved': False,
+                'recommendations': alert.metadata.get('recommendations', []) if alert.metadata else [],
+                'details': alert.metadata.get('details', {}) if alert.metadata else {}
+            }
+            formatted_alerts.append(formatted_alert)
+        
+        # Shape summary to match frontend expectations as much as possible
+        alert_summary = {
+            'total': alert_stats.get('total_alerts', 0),
+            'by_severity': alert_stats.get('by_level', {}),
+            'by_category': {}
+        }
         
         return jsonify({
             'alerts': formatted_alerts,
@@ -487,6 +558,7 @@ def get_alerts():
         
     except Exception as e:
         logger.error(f"Error getting alerts: {str(e)}", exc_info=True)
+        # Return empty alerts array in correct format instead of error
         return jsonify({
             'alerts': [],
             'summary': {
@@ -494,7 +566,84 @@ def get_alerts():
                 'by_severity': {'critical': 0, 'error': 0, 'warning': 0, 'info': 0},
                 'by_category': {}
             },
-            'error': 'Failed to retrieve alerts',
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }), 200  # Return 200 with empty alerts instead of 500
+
+
+@performance_api.route('/optimization-recommendations')
+@login_required
+def get_optimization_recommendations():
+    """
+    Get optimization recommendations for Business Analytics.
+
+    This endpoint is used by the frontend (`BusinessAnalytics.tsx`).
+    It returns recommendations in the shape expected by the UI:
+      - priority: low|medium|high|critical
+      - component: cpu|memory|database|cache|system
+      - message: human readable text
+      - action: suggested action
+    """
+    try:
+        from app.services.performance_monitor import performance_monitor
+
+        raw_recs = performance_monitor.get_optimization_recommendations() or []
+
+        # Normalize into UI shape
+        mapped = []
+        for rec in raw_recs:
+            rec_type = (rec.get('type') or '').lower()
+            priority = (rec.get('priority') or 'low').lower()
+            title = rec.get('title') or 'Optimization Recommendation'
+            description = rec.get('description') or ''
+
+            # Map component from type
+            component = 'system'
+            if 'cpu' in rec_type:
+                component = 'cpu'
+            elif 'memory' in rec_type:
+                component = 'memory'
+            elif 'database' in rec_type:
+                component = 'database'
+            elif 'cache' in rec_type:
+                component = 'cache'
+
+            # Provide a compact UI message and action
+            message = f"{title}: {description}".strip(': ').strip()
+            action = description or 'Review recommendation details'
+
+            mapped.append({
+                'priority': priority,
+                'component': component,
+                'message': message,
+                'action': action,
+                'details': {
+                    'impact': rec.get('impact'),
+                    'effort': rec.get('effort'),
+                    'type': rec.get('type'),
+                }
+            })
+
+        # Fallback when monitor hasn't produced recommendations yet
+        if not mapped:
+            mapped = [{
+                'priority': 'low',
+                'component': 'system',
+                'message': 'No optimization recommendations available yet.',
+                'action': 'Continue monitoring system performance.',
+                'details': {}
+            }]
+
+        return jsonify({
+            'recommendations': mapped,
+            'total': len(mapped),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }), 200
+    except Exception as e:
+        logger.error(f"Error getting optimization recommendations: {str(e)}", exc_info=True)
+        return jsonify({
+            'recommendations': [],
+            'total': 0,
+            'error': 'Failed to retrieve optimization recommendations',
             'message': str(e),
             'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
@@ -598,6 +747,67 @@ def get_pool_optimization_suggestions():
         }), 500
 
 
+@performance_api.route('/database-optimization/create-index', methods=['POST'])
+@login_required
+def create_optimization_index():
+    """
+    Create a specific index from optimization recommendations
+    Expects JSON: {"table": "table_name", "index": "index_name", "columns": ["col1", "col2"]}
+    """
+    try:
+        data = request.get_json() or {}
+        table_name = data.get('table')
+        index_name = data.get('index')
+        columns = data.get('columns', [])
+        
+        if not table_name or not index_name or not columns:
+            return jsonify({
+                'error': 'Missing required fields',
+                'message': 'table, index, and columns are required'
+            }), 400
+        
+        from app import db
+        from sqlalchemy import text
+        
+        # Build CREATE INDEX statement
+        columns_str = ', '.join(f'"{col}"' for col in columns)
+        sql = f'CREATE INDEX IF NOT EXISTS {index_name} ON "{table_name}" ({columns_str})'
+        
+        try:
+            db.session.execute(text(sql))
+            db.session.commit()
+            
+            api_logger.info(f"Created index {index_name} on {table_name}({columns_str}) by user {current_user.id}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Index {index_name} created successfully',
+                'index': {
+                    'table': table_name,
+                    'index': index_name,
+                    'columns': columns
+                },
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }), 200
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Failed to create index {index_name}: {e}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to create index: {str(e)}',
+                'message': str(e)
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error creating index: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': 'Failed to create index',
+            'message': str(e)
+        }), 500
+
+
 @performance_api.route('/database-optimization', methods=['GET', 'POST'])
 @login_required
 def database_optimization():
@@ -643,7 +853,8 @@ def database_optimization():
         for table in tables_to_check:
             try:
                 from app import db
-                result = db.session.execute(text(f"SELECT COUNT(*) FROM {table}")).fetchone()
+                # Quote table name to handle reserved keywords like 'transaction'
+                result = db.session.execute(text(f'SELECT COUNT(*) FROM "{table}"')).fetchone()
                 row_count = result[0] if result else 0
                 
                 if row_count > 10000:
@@ -750,12 +961,7 @@ def database_optimization():
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
-        api_logger.log_business_event(
-            "database_optimization",
-            f"Database optimization analysis completed: {len(recommendations)} recommendations",
-            current_user.id
-        )
-        api_logger.info(f"API Request: POST /performance/database-optimization - {len(recommendations)} recommendations")
+        api_logger.info(f"Database optimization analysis completed: {len(recommendations)} recommendations (user: {current_user.id})")
         return jsonify(response), 200
         
     except Exception as e:

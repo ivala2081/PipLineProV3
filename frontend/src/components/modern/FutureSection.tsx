@@ -23,7 +23,7 @@ const FutureSection: React.FC = () => {
     <Card className="dashboard-card bg-white border-0 shadow-xl hover:shadow-2xl transition-all duration-300">
       <CardHeader className="pb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -85,8 +85,8 @@ const FutureSection: React.FC = () => {
             <div className="px-6 pb-6">
               <div className="space-y-6">
                 <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Brain className="w-8 h-8 text-blue-600" />
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Brain className="w-8 h-8 text-gray-600" />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 mb-2">
                     AI-Powered Business Insights
@@ -99,7 +99,7 @@ const FutureSection: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <TrendingUp className="w-5 h-5 text-green-600" />
+                      <TrendingUp className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Revenue Forecasting</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -109,7 +109,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <BarChart3 className="w-5 h-5 text-blue-600" />
+                      <BarChart3 className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Risk Analysis</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -119,7 +119,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Globe className="w-5 h-5 text-purple-600" />
+                      <Globe className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Market Intelligence</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -129,7 +129,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Cpu className="w-5 h-5 text-orange-600" />
+                      <Cpu className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Process Optimization</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -145,8 +145,8 @@ const FutureSection: React.FC = () => {
             <div className="px-6 pb-6">
               <div className="space-y-6">
                 <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gradient-to-r from-yellow-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Zap className="w-8 h-8 text-yellow-600" />
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Zap className="w-8 h-8 text-gray-600" />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 mb-2">
                     Smart Automation
@@ -159,7 +159,7 @@ const FutureSection: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Database className="w-5 h-5 text-blue-600" />
+                      <Database className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Data Processing</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -169,7 +169,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <TrendingUp className="w-5 h-5 text-green-600" />
+                      <TrendingUp className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Report Generation</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -179,7 +179,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Shield className="w-5 h-5 text-red-600" />
+                      <Shield className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Fraud Detection</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -189,7 +189,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Globe className="w-5 h-5 text-purple-600" />
+                      <Globe className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">API Integration</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -205,8 +205,8 @@ const FutureSection: React.FC = () => {
             <div className="px-6 pb-6">
               <div className="space-y-6">
                 <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gradient-to-r from-red-100 to-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Shield className="w-8 h-8 text-red-600" />
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Shield className="w-8 h-8 text-gray-600" />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 mb-2">
                     Advanced Security
@@ -219,7 +219,7 @@ const FutureSection: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Shield className="w-5 h-5 text-green-600" />
+                      <Shield className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Zero-Trust Architecture</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -229,7 +229,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Cpu className="w-5 h-5 text-blue-600" />
+                      <Cpu className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Blockchain Integration</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -239,7 +239,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Brain className="w-5 h-5 text-purple-600" />
+                      <Brain className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">AI Threat Detection</h4>
                     </div>
                     <p className="text-sm text-slate-600">
@@ -249,7 +249,7 @@ const FutureSection: React.FC = () => {
                   
                   <div className="p-4 bg-slate-50 rounded-lg border">
                     <div className="flex items-center gap-3 mb-3">
-                      <Globe className="w-5 h-5 text-orange-600" />
+                      <Globe className="w-5 h-5 text-gray-600" />
                       <h4 className="font-medium text-slate-900">Compliance Monitoring</h4>
                     </div>
                     <p className="text-sm text-slate-600">

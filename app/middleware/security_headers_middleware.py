@@ -102,18 +102,18 @@ class SecurityHeadersMiddleware:
                         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
                         "font-src 'self' https://fonts.gstatic.com; "
                         "img-src 'self' data:; "
-                        "connect-src 'self' https://cdn.socket.io; "
+                        "connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; "
                         "frame-ancestors 'none'"
                     )
                 else:
-                    # Development default - more permissive
+                    # Development default - more permissive (includes debug logging endpoint)
                     response.headers['Content-Security-Policy'] = (
                         "default-src 'self'; "
                         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
                         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
                         "font-src 'self' https://fonts.gstatic.com; "
                         "img-src 'self' data: https:; "
-                        "connect-src 'self' https://query1.finance.yahoo.com; "
+                        "connect-src 'self' http://127.0.0.1:7242 https://query1.finance.yahoo.com; "
                         "frame-ancestors 'self'"
                     )
             

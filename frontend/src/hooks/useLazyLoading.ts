@@ -101,27 +101,51 @@ export const useLazyLoading = (
         retryCount: 0,
       }));
     } catch (error) {
-      console.error('useLazyLoading: Error loading component:', error);
-      const currentRetryCount = state.retryCount;
+      const err = error as Error;
+      const isChunkError = 
+        err.message?.includes('Failed to fetch') ||
+        err.message?.includes('Loading chunk') ||
+        err.message?.includes('ChunkLoadError') ||
+        err.name === 'ChunkLoadError' ||
+        err.message?.includes('network error') ||
+        err.message?.includes('Failed to fetch dynamically imported module');
       
-      if (currentRetryCount < maxRetryCount) {
-        // Retry after delay
-        setTimeout(() => {
-          setState(prev => ({
-            ...prev,
-            retryCount: prev.retryCount + 1,
-          }));
-          loadComponent();
-        }, retryDelay);
-      } else {
-        setState(prev => ({
-          ...prev,
-          isLoading: false,
-          error: error as Error,
-        }));
+      console.error('useLazyLoading: Error loading component:', error);
+      if (isChunkError) {
+        console.warn('Chunk loading error detected. This may require a page refresh.');
       }
+      
+      setState(prev => {
+        const currentRetryCount = prev.retryCount;
+        
+        // For chunk errors, don't retry too many times - user should refresh
+        const maxRetriesForChunk = isChunkError ? 1 : maxRetryCount;
+        
+        if (currentRetryCount < maxRetriesForChunk) {
+          // Retry after delay (longer delay for chunk errors)
+          const delay = isChunkError ? retryDelay * 2 : retryDelay;
+          setTimeout(() => {
+            loadComponent();
+          }, delay);
+          
+          return {
+            ...prev,
+            retryCount: currentRetryCount + 1,
+          };
+        } else {
+          // Mark error as chunk error for UI handling
+          const enhancedError = err;
+          (enhancedError as any).isChunkError = isChunkError;
+          
+          return {
+            ...prev,
+            isLoading: false,
+            error: enhancedError,
+          };
+        }
+      });
     }
-  }, [cache, maxRetryCount, retryDelay, state.retryCount]);
+  }, [cache, maxRetryCount, retryDelay]);
 
   const preloadComponent = useCallback(async (): Promise<void> => {
     const key = cacheKey.current;

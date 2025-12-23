@@ -132,20 +132,30 @@ export const ModernForm: React.FC<ModernFormProps> = ({
   const renderField = (field: FormField) => {
     const hasError = touched[field.name] && errors[field.name];
     const fieldIcon = field.icon || getFieldIcon(field.type);
+    const fieldId = `field-${field.name}`;
+    const errorId = hasError ? `${fieldId}-error` : undefined;
+    const describedBy = errorId || undefined;
 
     return (
       <div key={field.name} className="space-y-2">
-        <label className="text-sm font-medium text-foreground flex items-center gap-2">
-          {fieldIcon}
+        <label 
+          htmlFor={fieldId}
+          className="text-sm font-medium text-foreground flex items-center gap-2"
+        >
+          {fieldIcon && <span aria-hidden="true">{fieldIcon}</span>}
           {field.label}
-          {field.required && <span className="text-destructive">*</span>}
+          {field.required && <span className="text-destructive" aria-label="required">*</span>}
         </label>
         
         {field.type === 'select' ? (
           <select
+            id={fieldId}
             value={formData[field.name] || ''}
             onChange={(e) => handleChange(field.name, e.target.value)}
             onBlur={() => handleBlur(field.name)}
+            aria-invalid={hasError ? 'true' : undefined}
+            aria-describedby={describedBy}
+            aria-required={field.required ? 'true' : undefined}
             className={`w-full px-3 py-2 border rounded-md bg-background text-foreground ${
               hasError ? 'border-destructive' : 'border-input'
             } focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2`}
@@ -159,30 +169,43 @@ export const ModernForm: React.FC<ModernFormProps> = ({
           </select>
         ) : field.type === 'textarea' ? (
           <textarea
+            id={fieldId}
             value={formData[field.name] || ''}
             onChange={(e) => handleChange(field.name, e.target.value)}
             onBlur={() => handleBlur(field.name)}
             placeholder={field.placeholder}
             rows={4}
+            aria-invalid={hasError ? 'true' : undefined}
+            aria-describedby={describedBy}
+            aria-required={field.required ? 'true' : undefined}
             className={`w-full px-3 py-2 border rounded-md bg-background text-foreground resize-none ${
               hasError ? 'border-destructive' : 'border-input'
             } focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2`}
           />
         ) : (
           <Input
+            id={fieldId}
             type={field.type}
             value={formData[field.name] || ''}
             onChange={(e) => handleChange(field.name, e.target.value)}
             onBlur={() => handleBlur(field.name)}
             placeholder={field.placeholder}
+            aria-invalid={hasError ? 'true' : undefined}
+            aria-describedby={describedBy}
+            aria-required={field.required ? 'true' : undefined}
             className={hasError ? 'border-destructive' : ''}
           />
         )}
         
         {hasError && (
-          <div className="flex items-center gap-1 text-sm text-destructive">
-            <AlertCircle className="w-4 h-4" />
-            {errors[field.name]}
+          <div 
+            id={errorId}
+            className="flex items-start gap-1.5 text-sm text-destructive mt-1 animate-in fade-in slide-in-from-top-1 duration-200"
+            role="alert"
+            aria-live="polite"
+          >
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+            <span>{errors[field.name]}</span>
           </div>
         )}
       </div>

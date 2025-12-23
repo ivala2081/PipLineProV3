@@ -80,6 +80,8 @@ import {
 } from '../design-system';
 import { DashboardQuickActions } from '../components/modern/dashboard/DashboardQuickActions';
 import { DashboardRevenue } from '../components/modern/dashboard/DashboardRevenue';
+import RecentActivityFeed from '../components/modern/RecentActivityFeed';
+import CryptoWalletBalancesCard from '../components/CryptoWalletBalancesCard';
 import {
   ResponsiveContainer,
   LineChart as RechartsLineChart,
@@ -1348,96 +1350,24 @@ const Dashboard = memo(() => {
                   </UnifiedSection>
                 )}
 
-                {/* System Activity */}
-                <UnifiedSection title={t('dashboard.system_activity')} description={t('dashboard.real_time_system_monitoring')}>
-                  <UnifiedGrid cols={2} gap="lg">
-                    <div className='bg-white rounded-2xl shadow-sm border border-gray-200 p-6'>
-                      <h3 className='text-lg font-semibold text-gray-900 mb-4'>{t('dashboard.recent_activity')}</h3>
-                      <div className='space-y-3'>
-                        <div className='flex items-center gap-3 p-3 bg-green-50 rounded-lg'>
-                          <div className='w-2 h-2 bg-green-500 rounded-full'></div>
-                          <div className='flex-1'>
-                            <p className='text-sm font-medium text-gray-900'>{t('dashboard.system_health_check')}</p>
-                            <p className='text-xs text-gray-500'>2 {t('dashboard.minutes_ago')}</p>
-                          </div>
-                          <span className='text-xs text-green-600 font-medium'>{t('common.success')}</span>
-                        </div>
-
-                        <div className='flex items-center gap-3 p-3 bg-gray-50 rounded-lg'>
-                          <div className='w-2 h-2 bg-gray-500 rounded-full'></div>
-                          <div className='flex-1'>
-                            <p className='text-sm font-medium text-gray-900'>{t('dashboard.data_sync_completed')}</p>
-                            <p className='text-xs text-gray-500'>5 {t('dashboard.minutes_ago')}</p>
-                          </div>
-                          <span className='text-xs text-gray-600 font-medium'>{t('dashboard.info')}</span>
-                        </div>
-
-                        <div className='flex items-center gap-3 p-3 bg-yellow-50 rounded-lg'>
-                          <div className='w-2 h-2 bg-yellow-500 rounded-full'></div>
-                          <div className='flex-1'>
-                            <p className='text-sm font-medium text-gray-900'>{t('dashboard.exchange_rate_updated')}</p>
-                            <p className='text-xs text-gray-500'>10 {t('dashboard.minutes_ago')}</p>
-                          </div>
-                          <span className='text-xs text-yellow-600 font-medium'>{t('dashboard.warning')}</span>
-                        </div>
-
-                        <div className='flex items-center gap-3 p-3 bg-gray-50 rounded-lg'>
-                          <div className='w-2 h-2 bg-gray-400 rounded-full'></div>
-                          <div className='flex-1'>
-                            <p className='text-sm font-medium text-gray-900'>{t('dashboard.backup_process_started')}</p>
-                            <p className='text-xs text-gray-500'>15 {t('dashboard.minutes_ago')}</p>
-                          </div>
-                          <span className='text-xs text-gray-600 font-medium'>{t('dashboard.processing')}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className='bg-white rounded-2xl shadow-sm border border-gray-200 p-6'>
-                      <h3 className='text-lg font-semibold text-gray-900 mb-4'>{t('dashboard.system_status')}</h3>
-                      <div className='space-y-4'>
-                        <div className='flex items-center justify-between'>
-                          <div className='flex items-center gap-3'>
-                            <Server className='h-5 w-5 text-green-600' />
-                            <span className='text-sm font-medium text-gray-900'>{t('dashboard.api_server')}</span>
-                          </div>
-                          <span className='text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full'>{t('dashboard.online')}</span>
-                        </div>
-
-                        <div className='flex items-center justify-between'>
-                          <div className='flex items-center gap-3'>
-                            <Database className='h-5 w-5 text-green-600' />
-                            <span className='text-sm font-medium text-gray-900'>{t('dashboard.database')}</span>
-                          </div>
-                          <span className='text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full'>{t('dashboard.connected')}</span>
-                        </div>
-
-                        <div className='flex items-center justify-between'>
-                          <div className='flex items-center gap-3'>
-                            <Wifi className='h-5 w-5 text-green-600' />
-                            <span className='text-sm font-medium text-gray-900'>{t('dashboard.network')}</span>
-                          </div>
-                          <span className='text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full'>{t('dashboard.stable')}</span>
-                        </div>
-
-                        <div className='flex items-center justify-between'>
-                          <div className='flex items-center gap-3'>
-                            <Shield className='h-5 w-5 text-green-600' />
-                            <span className='text-sm font-medium text-gray-900'>{t('dashboard.security')}</span>
-                          </div>
-                          <span className='text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full'>{t('dashboard.secure')}</span>
-                        </div>
-
-                        <div className='flex items-center justify-between'>
-                          <div className='flex items-center gap-3'>
-                            <Activity className='h-5 w-5 text-gray-600' />
-                            <span className='text-sm font-medium text-gray-900'>{t('dashboard.performance')}</span>
-                          </div>
-                          <span className='text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-full'>{t('dashboard.good')}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </UnifiedGrid>
+                {/* Recent Activity */}
+                <UnifiedSection title={t('dashboard.recent_activity')} description={t('dashboard.recent_transaction_activity')}>
+                  <RecentActivityFeed 
+                    limit={5}
+                    onClickTransaction={(transactionId, transaction) => {
+                      // Navigate to clients page with client filter to show client information (same as Transactions table in Clients section)
+                      if (transaction?.client_name) {
+                        navigate(`/clients?tab=transactions&client=${encodeURIComponent(transaction.client_name)}&highlight=${transactionId}`);
+                      } else {
+                        navigate(`/clients?tab=transactions&highlight=${transactionId}`);
+                      }
+                    }}
+                  />
                 </UnifiedSection>
+
+                {/* Crypto Wallet Balances - Between Recent Activity and Revenue */}
+                <CryptoWalletBalancesCard />
+
               </div>
             )
           }
@@ -1554,7 +1484,7 @@ const Dashboard = memo(() => {
                 <div className='bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden'>
                   <div className='flex items-center justify-between p-6 border-b border-gray-200'>
                     <div className='flex items-center gap-3'>
-                      <div className='w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-sm'>
+                      <div className='w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center shadow-sm'>
                         <Globe className='h-5 w-5 text-white' />
                       </div>
                       <div>

@@ -17,7 +17,19 @@ class Config:
     UPLOAD_FOLDER = os.path.join('static', 'uploads')
     
     # Security settings
-    BULK_DELETE_CONFIRMATION_CODE = os.environ.get('BULK_DELETE_CONFIRMATION_CODE', '4561')
+    # BULK_DELETE_CONFIRMATION_CODE must be set via environment variable for security
+    # Generate a secure code: python -c "import secrets; print(secrets.token_urlsafe(8)[:8])"
+    BULK_DELETE_CONFIRMATION_CODE = os.environ.get('BULK_DELETE_CONFIRMATION_CODE')
+    if not BULK_DELETE_CONFIRMATION_CODE:
+        import secrets
+        # Generate a random 8-character code if not set (development only)
+        BULK_DELETE_CONFIRMATION_CODE = secrets.token_urlsafe(8)[:8]
+        import warnings
+        warnings.warn(
+            "BULK_DELETE_CONFIRMATION_CODE not set. Using auto-generated code. "
+            "Set BULK_DELETE_CONFIRMATION_CODE in environment for production!",
+            UserWarning
+        )
     
     # Enhanced security settings
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)  # Extended session lifetime
@@ -34,9 +46,15 @@ class Config:
     CORS_SUPPORTS_CREDENTIALS = True
     CORS_MAX_AGE = 600  # 10 minutes
     
-    # Enhanced file upload security
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
-    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'jpg', 'jpeg', 'png'}
+    # Enhanced file upload security - Different limits per file type
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB global max file size
+    # Per-file-type size limits (in bytes)
+    MAX_FILE_SIZE_BY_TYPE = {
+        'image': 5 * 1024 * 1024,  # 5MB for images
+        'excel': 10 * 1024 * 1024,  # 10MB for Excel files
+        'csv': 5 * 1024 * 1024,  # 5MB for CSV files
+    }
+    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'jpg', 'jpeg', 'png', 'gif'}
     
     # Enhanced rate limiting
     RATELIMIT_STORAGE_URL = "memory://"
@@ -98,6 +116,15 @@ class Config:
     # Database Query Logging
     DB_QUERY_LOGGING = False  # Set to True to log all SQL queries
     DB_SLOW_QUERY_THRESHOLD = 1.0  # Log queries taking longer than 1 second
+    DB_QUERY_TIMEOUT = 30  # 30 seconds default query timeout
+    
+    # Request timeout settings
+    REQUEST_TIMEOUT = 120  # 2 minutes default request timeout
+    MAX_REQUEST_SIZE = 16 * 1024 * 1024  # 16MB max request body size
+    
+    # Transaction retry settings
+    DB_TRANSACTION_MAX_RETRIES = 3  # Maximum retry attempts for transient errors
+    DB_TRANSACTION_RETRY_DELAY = 0.5  # Initial retry delay in seconds
     
     # Prepared Statements (enabled by default for security)
     SQLALCHEMY_USE_PREPARED_STATEMENTS = True
@@ -156,7 +183,7 @@ class Config:
         'X-Frame-Options': 'DENY',
         'X-XSS-Protection': '1; mode=block',
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https://cdn.socket.io; frame-ancestors 'none';",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; frame-ancestors 'none';",
         'Referrer-Policy': 'strict-origin-when-cross-origin',
         'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -368,12 +395,13 @@ class DevelopmentConfig(Config):
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'SAMEORIGIN',
         'X-XSS-Protection': '1; mode=block',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https://cdn.socket.io;",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io;",
     }
     
-    # Development Redis settings (disabled by default)
-    REDIS_ENABLED = False  # Disable Redis in development by default
-    REDIS_URL = os.environ.get('REDIS_URL') or None  # Use in-memory cache if Redis not available
+    # Development Redis settings
+    # Enable Redis in dev if explicitly requested via env, otherwise fallback to in-memory.
+    REDIS_ENABLED = os.environ.get('REDIS_ENABLED', 'false').lower() == 'true'
+    REDIS_URL = os.environ.get('REDIS_URL') or None
 
 class ProductionConfig(Config):
     """Production configuration"""
@@ -468,9 +496,19 @@ class ProductionConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or None  # Will be set after class definition
     # Production security - Cookie settings
     SESSION_COOKIE_HTTPONLY = True  # Not accessible via JavaScript
-    # SESSION_COOKIE_SECURE: Set based on environment (False for HTTP, True for HTTPS)
-    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
-    SESSION_COOKIE_SAMESITE = 'Lax'  # Lax for compatibility with HTTP
+    # SESSION_COOKIE_SECURE: MUST be True in production when using HTTPS
+    # Automatically detect HTTPS from environment or require explicit setting
+    is_https = os.environ.get('HTTPS_ENABLED', 'false').lower() == 'true' or \
+               os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+    SESSION_COOKIE_SECURE = is_https
+    if not is_https:
+        import warnings
+        warnings.warn(
+            "SESSION_COOKIE_SECURE is False. In production with HTTPS, "
+            "set SESSION_COOKIE_SECURE=true or HTTPS_ENABLED=true in environment variables.",
+            UserWarning
+        )
+    SESSION_COOKIE_SAMESITE = 'Lax'  # Lax for compatibility, Strict for better security
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)  # Extended session time
     
     # Redis for rate limiting and caching
@@ -571,7 +609,7 @@ class ProductionConfig(Config):
         'X-Frame-Options': 'DENY',
         'X-XSS-Protection': '1; mode=block',
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https://cdn.socket.io; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';",
         'Referrer-Policy': 'strict-origin-when-cross-origin',
         'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()',
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',

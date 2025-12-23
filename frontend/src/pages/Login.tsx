@@ -356,14 +356,6 @@ return (
 
         </div>
 
-        {/* Security Notice */}
-        <Alert className="border-amber-200 bg-amber-50">
-          <Shield className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-800">
-            {t('login.securityNotice')}
-          </AlertDescription>
-        </Alert>
-
         {/* Account Lockout Warning */}
         {isLocked && (
           <Alert variant="destructive">

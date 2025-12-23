@@ -252,7 +252,7 @@ export const componentTokens = {
   }
 };
 
-// Light theme only
+// Theme variants for light and dark modes
 export const themeVariants = {
   light: {
     background: '#ffffff',
@@ -274,5 +274,26 @@ export const themeVariants = {
     popoverForeground: '#0f172a',
     card: '#ffffff',
     cardForeground: '#0f172a',
+  },
+  dark: {
+    background: '#0f172a', // slate-900
+    foreground: '#f8fafc', // slate-50
+    muted: '#1e293b', // slate-800
+    mutedForeground: '#cbd5e1', // slate-300
+    border: '#334155', // slate-700
+    input: '#334155', // slate-700
+    ring: '#94a3b8', // slate-400
+    primary: '#3b82f6', // blue-500
+    primaryForeground: '#ffffff',
+    secondary: '#1e293b', // slate-800
+    secondaryForeground: '#f8fafc', // slate-50
+    destructive: '#dc2626', // red-600
+    destructiveForeground: '#ffffff',
+    accent: '#1e293b', // slate-800
+    accentForeground: '#f8fafc', // slate-50
+    popover: '#1e293b', // slate-800
+    popoverForeground: '#f8fafc', // slate-50
+    card: '#1e293b', // slate-800
+    cardForeground: '#f8fafc', // slate-50
   }
 };

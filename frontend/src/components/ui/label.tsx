@@ -15,7 +15,7 @@ const labelVariants = cva(
         warning: "text-yellow-700",
         info: "text-blue-700",
         muted: "text-muted-foreground",
-        gradient: "bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent",
+        gradient: "text-gray-700",
       },
       size: {
         default: "text-sm",

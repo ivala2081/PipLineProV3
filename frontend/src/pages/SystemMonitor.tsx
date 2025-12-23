@@ -23,10 +23,11 @@ import {
   Copy,
   Check
 } from 'lucide-react';
-import { Breadcrumb } from '../components/ui';
 import { UnifiedCard, UnifiedButton, UnifiedBadge, UnifiedSection, UnifiedGrid } from '../design-system';
 import StandardMetricsCard from '../components/StandardMetricsCard';
 import { useLanguage } from '../contexts/LanguageContext';
+import PageLayout from '../components/layout/PageLayout';
+import { SectionHeader } from '../components/ui/SectionHeader';
 
 interface SystemMetrics {
   cpu_usage: number;
@@ -131,6 +132,7 @@ const SystemMonitor: React.FC = () => {
   
   // Raw metrics data for diagnostics
   const [rawMetricsData, setRawMetricsData] = useState<any>(null);
+  const [creatingIndex, setCreatingIndex] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSystemData();
@@ -271,26 +273,33 @@ const SystemMonitor: React.FC = () => {
   };
 
   const getStatusColor = (status: string) => {
-    if (!status) return 'text-gray-600 bg-gray-100';
-    
-    switch (status.toLowerCase()) {
-      case 'healthy': return 'text-green-600 bg-green-100';
-      case 'warning': return 'text-yellow-600 bg-yellow-100';
-      case 'error': return 'text-red-600 bg-red-100';
-      case 'critical': return 'text-red-800 bg-red-200';
-      default: return 'text-gray-600 bg-gray-100';
-    }
+    // Legacy helper kept for compatibility in a few places; prefer UnifiedBadge variants.
+    return 'text-gray-700 bg-gray-100';
   };
 
   const getStatusIcon = (status: string) => {
     if (!status) return <Clock className="w-5 h-5 text-gray-600" />;
     
     switch (status.toLowerCase()) {
-      case 'healthy': return <CheckCircle className="w-5 h-5 text-green-600" />;
-      case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-600" />;
-      case 'error': return <AlertTriangle className="w-5 h-5 text-red-600" />;
-      case 'critical': return <AlertTriangle className="w-5 h-5 text-red-800" />;
+      case 'healthy': return <CheckCircle className="w-5 h-5 text-gray-700" />;
+      case 'warning': return <AlertTriangle className="w-5 h-5 text-gray-700" />;
+      case 'error': return <AlertTriangle className="w-5 h-5 text-gray-700" />;
+      case 'critical': return <AlertTriangle className="w-5 h-5 text-gray-900" />;
       default: return <Clock className="w-5 h-5 text-gray-600" />;
+    }
+  };
+
+  const getStatusBadgeVariant = (status?: string) => {
+    switch ((status || '').toLowerCase()) {
+      case 'healthy':
+        return 'success' as const;
+      case 'warning':
+        return 'warning' as const;
+      case 'error':
+      case 'critical':
+        return 'destructive' as const;
+      default:
+        return 'secondary' as const;
     }
   };
 
@@ -299,11 +308,24 @@ const SystemMonitor: React.FC = () => {
     
     switch (severity.toLowerCase()) {
       case 'low': return 'border-l-gray-500 bg-gray-50';
-      case 'medium': return 'border-l-yellow-500 bg-yellow-50';
-      case 'high': return 'border-l-orange-500 bg-orange-50';
-      case 'critical': return 'border-l-red-500 bg-red-50';
+      case 'medium': return 'border-l-gray-600 bg-gray-50';
+      case 'high': return 'border-l-gray-700 bg-gray-50';
+      case 'critical': return 'border-l-gray-900 bg-gray-50';
       default: return 'border-l-gray-500 bg-gray-50';
     }
+  };
+
+  const getProgressBarColor = (value: number) => {
+    // Keep status signaling, but align with PipLinePro neutral palette (no vivid colors)
+    if (value > 80) return 'bg-gray-900';
+    if (value > 60) return 'bg-gray-700';
+    return 'bg-gray-500';
+  };
+
+  const getProgressBarColorFromHitRate = (hitRate: number) => {
+    if (hitRate > 70) return 'bg-gray-700';
+    if (hitRate > 50) return 'bg-gray-600';
+    return 'bg-gray-500';
   };
 
   const copyDiagnostics = async () => {
@@ -326,86 +348,121 @@ const SystemMonitor: React.FC = () => {
     }
   };
 
+  const createIndex = async (rec: any) => {
+    if (!rec.details?.table || !rec.details?.index || !rec.details?.columns) {
+      console.error('Missing index information');
+      return;
+    }
+
+    try {
+      setCreatingIndex(rec.details.index);
+      
+      const response = await fetch('/api/v1/performance/database-optimization/create-index', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          table: rec.details.table,
+          index: rec.details.index,
+          columns: rec.details.columns
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Refresh optimization results
+        await runDatabaseOptimization();
+        // Show success message (you could add a toast notification here)
+        alert(t('system_monitor.index_created_success', { index: rec.details.index }));
+      } else {
+        throw new Error(data.message || t('system_monitor.failed_to_create_index'));
+      }
+    } catch (error) {
+      console.error('Error creating index:', error);
+      alert(`${t('system_monitor.failed_to_create_index')}: ${error instanceof Error ? error.message : t('system_monitor.unknown')}`);
+    } finally {
+      setCreatingIndex(null);
+    }
+  };
+
   return (
     <>
+      <PageLayout theme="plain" minHeightScreen={false}>
       <div className="p-6">
 
       {/* Page Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Activity className="h-8 w-8 text-gray-600" />
-              System Monitor
-            </h1>
-            <p className="text-gray-600">Real-time system performance and health monitoring</p>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <button
-              onClick={copyDiagnostics}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center gap-2"
-              title="Copy all system diagnostics to clipboard"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  Copied!
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  Copy Diagnostics
-                </>
-              )}
-            </button>
-            
-            <button
-              onClick={fetchSystemData}
-              disabled={isLoading}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? 'Refreshing...' : 'Refresh Now'}
-            </button>
-            
-            <button
-              onClick={runDatabaseOptimization}
-              disabled={isOptimizing}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center gap-2"
-            >
-              <Settings className="w-4 h-4" />
-              {isOptimizing ? 'Optimizing...' : 'Run DB Optimization'}
-            </button>
-              
-              <label className="flex items-center gap-2 text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="rounded border-gray-300 text-gray-600 focus:ring-gray-500"
-                />
-                Auto-refresh
-              </label>
-              
-              {autoRefresh && (
-                <select
-                  value={refreshInterval}
-                  onChange={(e) => setRefreshInterval(Number(e.target.value))}
-                  className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                >
-                  <option value={15}>15 seconds</option>
-                  <option value={30}>30 seconds</option>
-                  <option value={60}>1 minute</option>
-                  <option value={300}>5 minutes</option>
-                </select>
-              )}
+        <SectionHeader
+          title={t('navigation.system_monitor', 'System Monitor')}
+          description={t('navigation.realtime_system_monitoring', 'Real-time system performance and health monitoring')}
+          icon={Activity}
+          actions={
+            <div className="flex items-center gap-3">
+              <UnifiedButton
+                variant="outline"
+                size="sm"
+                onClick={copyDiagnostics}
+                icon={copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                iconPosition="left"
+              >
+                {copied ? t('common.copied', 'Copied') : t('system_monitor.copy_diagnostics', 'Copy Diagnostics')}
+              </UnifiedButton>
+
+              <UnifiedButton
+                variant="outline"
+                size="sm"
+                onClick={fetchSystemData}
+                disabled={isLoading}
+                icon={<RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />}
+                iconPosition="left"
+              >
+                {isLoading ? t('common.refreshing', 'Refreshing') : t('common.refresh', 'Refresh')}
+              </UnifiedButton>
+
+              <UnifiedButton
+                variant="primary"
+                size="sm"
+                onClick={runDatabaseOptimization}
+                disabled={isOptimizing}
+                icon={<Settings className="w-4 h-4" />}
+                iconPosition="left"
+              >
+                {isOptimizing ? t('system_monitor.optimizing', 'Optimizing') : t('system_monitor.run_db_optimization', 'Run DB Optimization')}
+              </UnifiedButton>
+
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={autoRefresh}
+                    onChange={(e) => setAutoRefresh(e.target.checked)}
+                    className="rounded border-gray-300 text-gray-700 focus:ring-gray-500"
+                  />
+                  {t('system_monitor.auto_refresh', 'Auto-refresh')}
+                </label>
+
+                {autoRefresh && (
+                  <select
+                    value={refreshInterval}
+                    onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                    className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-gray-500 bg-white"
+                  >
+                    <option value={15}>{t('system_monitor.refresh_interval_15s', '15s')}</option>
+                    <option value={30}>{t('system_monitor.refresh_interval_30s', '30s')}</option>
+                    <option value={60}>{t('system_monitor.refresh_interval_1m', '1m')}</option>
+                    <option value={300}>{t('system_monitor.refresh_interval_5m', '5m')}</option>
+                  </select>
+                )}
+              </div>
             </div>
-          </div>
+          }
+        />
           
           <div className="flex items-center justify-between text-sm">
             <div className="text-gray-500">
-              Last updated: {metrics?.last_update || 'Never'}
+              {t('system_monitor.last_updated', 'Last updated')}: {metrics?.last_update || t('system_monitor.never', 'Never')}
             </div>
             
             {/* Database Optimization Status */}
@@ -414,24 +471,19 @@ const SystemMonitor: React.FC = () => {
                 <Database className="w-4 h-4 text-gray-400" />
                 <span className="text-gray-500">DB Status:</span>
                 {!dbOptimization ? (
-                  <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
-                    Not Analyzed
-                  </span>
+                  <UnifiedBadge variant="secondary" size="sm">{t('system_monitor.not_analyzed', 'Not Analyzed')}</UnifiedBadge>
                 ) : isOptimizing ? (
-                  <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full flex items-center gap-1">
-                    <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                    Optimizing...
-                  </span>
+                  <UnifiedBadge variant="warning" size="sm">{t('system_monitor.optimizing', 'Optimizing')}</UnifiedBadge>
                 ) : (
-                  <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                    Optimized ({dbOptimization.total} recommendations)
-                  </span>
+                  <UnifiedBadge variant="success" size="sm">
+                    {t('system_monitor.optimized', 'Optimized')} ({dbOptimization.total})
+                  </UnifiedBadge>
                 )}
               </div>
               
               {dbOptimization && (
                 <div className="text-xs text-gray-400">
-                  Last run: {new Date(dbOptimization.timestamp).toLocaleTimeString()}
+                  {t('system_monitor.last_run', 'Last run')}: {new Date(dbOptimization.timestamp).toLocaleTimeString()}
                 </div>
               )}
             </div>
@@ -442,120 +494,126 @@ const SystemMonitor: React.FC = () => {
         {isLoading && (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600"></div>
-            <span className="ml-3 text-gray-600">Loading system data...</span>
+            <span className="ml-3 text-gray-600">{t('system_monitor.loading_system_data', 'Loading system data...')}</span>
           </div>
         )}
 
         {/* Error State */}
         {!isLoading && !metrics && !systemStatus && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-            <h3 className="text-lg font-medium text-red-800 mb-2">Failed to load system data</h3>
-            <p className="text-red-600 mb-4">Unable to fetch system metrics and status information.</p>
-            <button
-              onClick={fetchSystemData}
-              className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-            >
+          <UnifiedCard variant="elevated" className="p-6 text-center">
+            <div className="text-red-600 mb-3">
+              <AlertTriangle className="w-12 h-12 mx-auto" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Failed to load system data</h3>
+            <p className="text-gray-600 mb-4">Unable to fetch system metrics and status information.</p>
+            <UnifiedButton variant="outline" size="sm" onClick={fetchSystemData}>
               Retry
-            </button>
-          </div>
+            </UnifiedButton>
+          </UnifiedCard>
         )}
 
         {/* System Status Overview */}
         {!isLoading && systemStatus && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Overall Status</p>
-                  <p className={`text-lg font-semibold ${getStatusColor(systemStatus.overall)} px-2 py-1 rounded-full inline-block mt-1`}>
-                    {(systemStatus.overall || 'unknown').charAt(0).toUpperCase() + (systemStatus.overall || 'unknown').slice(1)}
-                  </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+            <UnifiedCard variant="flat" padding="sm" className="border border-gray-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-500">Overall</p>
+                  <div className="mt-1">
+                    <UnifiedBadge variant={getStatusBadgeVariant(systemStatus.overall)} size="sm">
+                      {(systemStatus.overall || 'unknown').charAt(0).toUpperCase() + (systemStatus.overall || 'unknown').slice(1)}
+                    </UnifiedBadge>
+                  </div>
                 </div>
-                {getStatusIcon(systemStatus.overall)}
+                <div className="shrink-0">{getStatusIcon(systemStatus.overall)}</div>
               </div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Database</p>
-                  <p className={`text-lg font-semibold ${getStatusColor(systemStatus.database)} px-2 py-1 rounded-full inline-block mt-1`}>
-                    {(systemStatus.database || 'unknown').charAt(0).toUpperCase() + (systemStatus.database || 'unknown').slice(1)}
-                  </p>
+            </UnifiedCard>
+
+            <UnifiedCard variant="flat" padding="sm" className="border border-gray-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-500">Database</p>
+                  <div className="mt-1">
+                    <UnifiedBadge variant={getStatusBadgeVariant(systemStatus.database)} size="sm">
+                      {(systemStatus.database || 'unknown').charAt(0).toUpperCase() + (systemStatus.database || 'unknown').slice(1)}
+                    </UnifiedBadge>
+                  </div>
                 </div>
-                <Database className="w-6 h-6 text-gray-600" />
+                <Database className="w-5 h-5 text-gray-600 shrink-0" />
               </div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">DB Optimization</p>
+            </UnifiedCard>
+
+            <UnifiedCard variant="flat" padding="sm" className="border border-gray-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-500">DB Optimization</p>
                   <div className="mt-1">
                     {!dbOptimization ? (
-                      <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
-                        Not Analyzed
-                      </span>
+                      <UnifiedBadge variant="secondary" size="sm">Not Analyzed</UnifiedBadge>
                     ) : isOptimizing ? (
-                      <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full flex items-center gap-1">
-                        <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                        Running
-                      </span>
+                      <UnifiedBadge variant="warning" size="sm">Running</UnifiedBadge>
                     ) : (
-                      <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                        {dbOptimization.total} Recommendations
-                      </span>
+                      <UnifiedBadge variant="success" size="sm">{dbOptimization.total}</UnifiedBadge>
                     )}
                   </div>
                 </div>
-                <Settings className="w-6 h-6 text-green-600" />
+                <Settings className="w-5 h-5 text-gray-600 shrink-0" />
               </div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Cache</p>
-                  <p className={`text-lg font-semibold ${getStatusColor(systemStatus.cache)} px-2 py-1 rounded-full inline-block mt-1`}>
-                    {(systemStatus.cache || 'unknown').charAt(0).toUpperCase() + (systemStatus.cache || 'unknown').slice(1)}
-                  </p>
+            </UnifiedCard>
+
+            <UnifiedCard variant="flat" padding="sm" className="border border-gray-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-500">Cache</p>
+                  <div className="mt-1">
+                    <UnifiedBadge variant={getStatusBadgeVariant(systemStatus.cache)} size="sm">
+                      {(systemStatus.cache || 'unknown').charAt(0).toUpperCase() + (systemStatus.cache || 'unknown').slice(1)}
+                    </UnifiedBadge>
+                  </div>
                 </div>
-                <HardDrive className="w-6 h-6 text-green-600" />
+                <HardDrive className="w-5 h-5 text-gray-600 shrink-0" />
               </div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">API</p>
-                  <p className={`text-lg font-semibold ${getStatusColor(systemStatus.api)} px-2 py-1 rounded-full inline-block mt-1`}>
-                    {(systemStatus.api || 'unknown').charAt(0).toUpperCase() + (systemStatus.api || 'unknown').slice(1)}
-                  </p>
+            </UnifiedCard>
+
+            <UnifiedCard variant="flat" padding="sm" className="border border-gray-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-500">Background</p>
+                  <div className="mt-1">
+                    <UnifiedBadge variant={getStatusBadgeVariant(systemStatus.background_tasks)} size="sm">
+                      {(systemStatus.background_tasks || 'unknown').charAt(0).toUpperCase() + (systemStatus.background_tasks || 'unknown').slice(1)}
+                    </UnifiedBadge>
+                  </div>
                 </div>
-                <Server className="w-6 h-6 text-purple-600" />
+                <BarChart3 className="w-5 h-5 text-gray-600 shrink-0" />
               </div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Background Tasks</p>
-                  <p className={`text-lg font-semibold ${getStatusColor(systemStatus.background_tasks)} px-2 py-1 rounded-full inline-block mt-1`}>
-                    {(systemStatus.background_tasks || 'unknown').charAt(0).toUpperCase() + (systemStatus.background_tasks || 'unknown').slice(1)}
-                  </p>
-                </div>
-                <BarChart3 className="w-6 h-6 text-indigo-600" />
-              </div>
-            </div>
+            </UnifiedCard>
           </div>
+        )}
+
+        {/* API Health Tracker */}
+        {!isLoading && systemStatus && (
+          <UnifiedCard variant="elevated" className="p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Server className="w-5 h-5 text-gray-600" />
+                API Health
+              </h3>
+              <UnifiedBadge variant={getStatusBadgeVariant(systemStatus.api)} size="sm">
+                {(systemStatus.api || 'unknown').charAt(0).toUpperCase() + (systemStatus.api || 'unknown').slice(1)}
+              </UnifiedBadge>
+            </div>
+            <p className="text-sm text-gray-600">
+              Current API health status from the system monitor endpoint.
+            </p>
+          </UnifiedCard>
         )}
 
         {/* Performance Metrics */}
         {!isLoading && metrics && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* System Resources */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
+            <UnifiedCard variant="elevated" className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Cpu className="w-5 h-5 text-gray-600" />
                 System Resources
@@ -569,7 +627,7 @@ const SystemMonitor: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div 
-                      className={`h-2 rounded-full ${(metrics.cpu_usage ?? 0) > 80 ? 'bg-red-500' : (metrics.cpu_usage ?? 0) > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                      className={`h-2 rounded-full ${getProgressBarColor(metrics.cpu_usage ?? 0)}`}
                       style={{ width: `${Math.min(metrics.cpu_usage ?? 0, 100)}%` }}
                     ></div>
                   </div>
@@ -582,7 +640,7 @@ const SystemMonitor: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div 
-                      className={`h-2 rounded-full ${(metrics.memory_usage ?? 0) > 80 ? 'bg-red-500' : (metrics.memory_usage ?? 0) > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                      className={`h-2 rounded-full ${getProgressBarColor(metrics.memory_usage ?? 0)}`}
                       style={{ width: `${Math.min(metrics.memory_usage ?? 0, 100)}%` }}
                     ></div>
                   </div>
@@ -595,18 +653,18 @@ const SystemMonitor: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div 
-                      className={`h-2 rounded-full ${(metrics.disk_usage ?? 0) > 80 ? 'bg-red-500' : (metrics.disk_usage ?? 0) > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                      className={`h-2 rounded-full ${getProgressBarColor(metrics.disk_usage ?? 0)}`}
                       style={{ width: `${Math.min(metrics.disk_usage ?? 0, 100)}%` }}
                     ></div>
                   </div>
                 </div>
               </div>
-            </div>
+            </UnifiedCard>
 
             {/* Application Performance */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
+            <UnifiedCard variant="elevated" className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-600" />
+                <TrendingUp className="w-5 h-5 text-gray-600" />
                 Application Performance
               </h3>
               
@@ -617,30 +675,30 @@ const SystemMonitor: React.FC = () => {
                     <p className="text-sm text-gray-600">Response Time</p>
                   </div>
                   
-                  <div className="text-center p-3 bg-green-50 rounded-lg">
-                    <p className="text-2xl font-bold text-green-600">{(metrics.requests_per_second ?? 0).toFixed(1)}</p>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{(metrics.requests_per_second ?? 0).toFixed(1)}</p>
                     <p className="text-sm text-gray-600">Requests/sec</p>
                   </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <p className="text-2xl font-bold text-purple-600">{metrics.database_connections ?? 0}</p>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{metrics.database_connections ?? 0}</p>
                     <p className="text-sm text-gray-600">DB Connections</p>
                   </div>
                   
-                  <div className="text-center p-3 bg-orange-50 rounded-lg">
-                    <p className="text-2xl font-bold text-orange-600">{(metrics.cache_hit_rate ?? 0).toFixed(1)}%</p>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{(metrics.cache_hit_rate ?? 0).toFixed(1)}%</p>
                     <p className="text-sm text-gray-600">Cache Hit Rate</p>
                   </div>
                 </div>
                 
-                <div className="text-center p-3 bg-red-50 rounded-lg">
-                  <p className="text-2xl font-bold text-red-600">{(metrics.error_rate ?? 0).toFixed(2)}%</p>
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <p className="text-2xl font-bold text-gray-900">{(metrics.error_rate ?? 0).toFixed(2)}%</p>
                   <p className="text-sm text-gray-600">Error Rate</p>
                 </div>
               </div>
-            </div>
+            </UnifiedCard>
           </div>
         )}
 
@@ -649,17 +707,13 @@ const SystemMonitor: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Redis Cache Metrics */}
             {metrics.cache && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <UnifiedCard variant="elevated" className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-yellow-600" />
+                  <Zap className="w-5 h-5 text-gray-600" />
                   Redis Cache
-                  <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${
-                    metrics.cache.redis_available 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
+                  <UnifiedBadge variant={metrics.cache.redis_available ? 'success' : 'warning'} size="sm">
                     {metrics.cache.redis_available ? 'Available' : 'Memory Cache'}
-                  </span>
+                  </UnifiedBadge>
                 </h3>
                 
                 <div className="space-y-4">
@@ -670,57 +724,53 @@ const SystemMonitor: React.FC = () => {
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
-                        className={`h-2 rounded-full ${
-                          (metrics.cache.hit_rate ?? 0) > 70 ? 'bg-green-500' : 
-                          (metrics.cache.hit_rate ?? 0) > 50 ? 'bg-yellow-500' : 
-                          'bg-red-500'
-                        }`}
+                        className={`h-2 rounded-full ${getProgressBarColorFromHitRate(metrics.cache.hit_rate ?? 0)}`}
                         style={{ width: `${Math.min(metrics.cache.hit_rate ?? 0, 100)}%` }}
                       ></div>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <p className="text-2xl font-bold text-green-600">{metrics.cache.hits ?? 0}</p>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-900">{metrics.cache.hits ?? 0}</p>
                       <p className="text-sm text-gray-600">Cache Hits</p>
                     </div>
                     
-                    <div className="text-center p-3 bg-red-50 rounded-lg">
-                      <p className="text-2xl font-bold text-red-600">{metrics.cache.misses ?? 0}</p>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-900">{metrics.cache.misses ?? 0}</p>
                       <p className="text-sm text-gray-600">Cache Misses</p>
                     </div>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-2xl font-bold text-blue-600">{(metrics.cache.avg_response_time ?? 0).toFixed(2)}ms</p>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-900">{(metrics.cache.avg_response_time ?? 0).toFixed(2)}ms</p>
                       <p className="text-sm text-gray-600">Avg Response</p>
                     </div>
                     
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <p className="text-2xl font-bold text-purple-600">{metrics.cache.memory_cache_entries ?? 0}</p>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-900">{metrics.cache.memory_cache_entries ?? 0}</p>
                       <p className="text-sm text-gray-600">Memory Entries</p>
                     </div>
                   </div>
                   
                   {!metrics.cache.redis_available && (
-                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-sm text-yellow-800">
+                    <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-sm text-gray-700">
                         <AlertTriangle className="w-4 h-4 inline mr-2" />
-                        Redis is not available. Using in-memory cache (not persistent across restarts).
+                        {t('system_monitor.redis_unavailable_message', 'Redis is not available. Using in-memory cache (not persistent across restarts).')}
                       </p>
                     </div>
                   )}
                 </div>
-              </div>
+              </UnifiedCard>
             )}
             
             {/* Database Connection Pool */}
             {metrics.database_pool && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
+              <UnifiedCard variant="elevated" className="p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Database className="w-5 h-5 text-blue-600" />
+                  <Database className="w-5 h-5 text-gray-600" />
                   Database Connection Pool
                 </h3>
                 
@@ -735,11 +785,11 @@ const SystemMonitor: React.FC = () => {
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
-                        className={`h-2 rounded-full ${
-                          metrics.database_pool.size > 0 && ((metrics.database_pool.checked_out / metrics.database_pool.size) * 100) > 80 ? 'bg-red-500' : 
-                          metrics.database_pool.size > 0 && ((metrics.database_pool.checked_out / metrics.database_pool.size) * 100) > 60 ? 'bg-yellow-500' : 
-                          'bg-green-500'
-                        }`}
+                        className={`h-2 rounded-full ${getProgressBarColor(
+                          metrics.database_pool.size > 0
+                            ? ((metrics.database_pool.checked_out / metrics.database_pool.size) * 100)
+                            : 0
+                        )}`}
                         style={{ 
                           width: `${metrics.database_pool.size > 0 
                             ? Math.min((metrics.database_pool.checked_out / metrics.database_pool.size) * 100, 100) 
@@ -750,22 +800,22 @@ const SystemMonitor: React.FC = () => {
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-2xl font-bold text-blue-600">{metrics.database_pool.checked_out ?? 0}</p>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-900">{metrics.database_pool.checked_out ?? 0}</p>
                       <p className="text-sm text-gray-600">Active Connections</p>
                     </div>
                     
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <p className="text-2xl font-bold text-purple-600">{metrics.database_pool.size ?? 0}</p>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-900">{metrics.database_pool.size ?? 0}</p>
                       <p className="text-sm text-gray-600">Pool Size</p>
                     </div>
                   </div>
                   
-                  <div className="text-center p-3 bg-orange-50 rounded-lg">
-                    <p className="text-2xl font-bold text-orange-600">{metrics.database_pool.overflow ?? 0}</p>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{metrics.database_pool.overflow ?? 0}</p>
                     <p className="text-sm text-gray-600">Overflow Connections</p>
                     {metrics.database_pool.overflow > 0 && (
-                      <p className="text-xs text-orange-700 mt-1">
+                      <p className="text-xs text-gray-600 mt-1">
                         <AlertTriangle className="w-3 h-3 inline mr-1" />
                         Pool exhausted, using overflow connections
                       </p>
@@ -773,36 +823,38 @@ const SystemMonitor: React.FC = () => {
                   </div>
                   
                   {metrics.database_pool.size > 0 && ((metrics.database_pool.checked_out / metrics.database_pool.size) * 100) > 80 && (
-                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-sm text-red-800">
+                    <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-sm text-gray-700">
                         <AlertTriangle className="w-4 h-4 inline mr-2" />
                         High pool usage detected. Consider increasing pool size or optimizing connection usage.
                       </p>
                     </div>
                   )}
                 </div>
-              </div>
+              </UnifiedCard>
             )}
           </div>
         )}
 
         {/* Database Optimization Results */}
         {!isLoading && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <UnifiedCard variant="elevated" className="p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Database className="w-5 h-5 text-green-600" />
+                <Database className="w-5 h-5 text-gray-600" />
                 Database Optimization
               </h3>
               <div className="flex items-center gap-2">
-                <button
+                <UnifiedButton
+                  variant="primary"
+                  size="sm"
                   onClick={runDatabaseOptimization}
                   disabled={isOptimizing}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  icon={<Settings className="w-4 h-4" />}
+                  iconPosition="left"
                 >
-                  <Settings className="w-4 h-4" />
-                  {isOptimizing ? 'Optimizing...' : 'Run Optimization'}
-                </button>
+                  {isOptimizing ? 'Optimizing' : 'Run Optimization'}
+                </UnifiedButton>
               </div>
             </div>
             
@@ -826,40 +878,44 @@ const SystemMonitor: React.FC = () => {
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {dbOptimization.recommendations.map((rec, index) => (
-                    <div key={index} className={`border rounded-lg p-4 ${
-                      rec.type === 'warning' ? 'border-yellow-200 bg-yellow-50' :
-                      rec.type === 'error' ? 'border-red-200 bg-red-50' :
-                      rec.type === 'success' ? 'border-green-200 bg-green-50' :
-                      'border-gray-200 bg-gray-50'
-                    }`}>
+                    <div key={index} className="border border-gray-200 bg-gray-50 rounded-lg p-4">
                       <div className="flex items-start gap-3">
-                        <div className={`w-2 h-2 rounded-full mt-2 ${
-                          rec.type === 'warning' ? 'bg-yellow-500' :
-                          rec.type === 'error' ? 'bg-red-500' :
-                          rec.type === 'success' ? 'bg-green-500' :
-                          'bg-gray-500'
-                        }`}></div>
+                        <div className="w-2 h-2 rounded-full mt-2 bg-gray-500"></div>
                         <div className="flex-1">
-                          <h4 className="font-medium text-gray-900 mb-1">{rec.message}</h4>
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h4 className="font-medium text-gray-900">{rec.message}</h4>
+                            {rec.details?.index && rec.details?.columns && (
+                              <UnifiedButton
+                                variant="outline"
+                                size="sm"
+                                onClick={() => createIndex(rec)}
+                                disabled={creatingIndex === rec.details.index}
+                                icon={creatingIndex === rec.details.index ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+                                iconPosition="left"
+                              >
+                                {creatingIndex === rec.details.index ? t('system_monitor.creating') : t('system_monitor.create_index')}
+                              </UnifiedButton>
+                            )}
+                          </div>
                           <p className="text-sm text-gray-600 mb-2">{rec.action}</p>
                           
                           {rec.details?.table && (
                             <div className="text-xs text-gray-500 mb-2">
-                              <span className="font-medium">Table:</span> {rec.details.table}
+                              <span className="font-medium">{t('system_monitor.table')}</span> {rec.details.table}
                               {rec.details.row_count && (
-                                <span className="ml-2">({rec.details.row_count.toLocaleString()} rows)</span>
+                                <span className="ml-2">({rec.details.row_count.toLocaleString()} {t('system_monitor.rows')})</span>
                               )}
                             </div>
                           )}
                           
                           {rec.details?.suggestions && rec.details.suggestions.length > 0 && (
                             <div className="mt-2">
-                              <p className="text-xs font-medium text-gray-600 mb-1">Suggestions:</p>
+                              <p className="text-xs font-medium text-gray-600 mb-1">{t('system_monitor.suggestions')}</p>
                               <ul className="text-xs text-gray-600 space-y-1">
                                 {rec.details.suggestions.map((suggestion, idx) => (
                                   <li key={idx} className="flex items-start gap-2">
                                     <span className="text-gray-500 mt-1">•</span>
-                                    {suggestion}
+                                    <code className="text-xs bg-gray-100 px-1 rounded">{suggestion}</code>
                                   </li>
                                 ))}
                               </ul>
@@ -868,11 +924,11 @@ const SystemMonitor: React.FC = () => {
                           
                           {rec.details?.general_tips && rec.details.general_tips.length > 0 && (
                             <div className="mt-2">
-                              <p className="text-xs font-medium text-gray-600 mb-1">Best Practices:</p>
+                              <p className="text-xs font-medium text-gray-600 mb-1">{t('system_monitor.best_practices')}</p>
                               <ul className="text-xs text-gray-600 space-y-1">
                                 {rec.details.general_tips.map((tip, idx) => (
                                   <li key={idx} className="flex items-start gap-2">
-                                    <span className="text-green-500 mt-1">•</span>
+                                    <span className="text-gray-500 mt-1">•</span>
                                     {tip}
                                   </li>
                                 ))}
@@ -886,21 +942,21 @@ const SystemMonitor: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
+          </UnifiedCard>
         )}
 
         {/* Performance Alerts */}
         {!isLoading && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <UnifiedCard variant="elevated" className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-orange-600" />
-              Performance Alerts
+              <AlertTriangle className="w-5 h-5 text-gray-600" />
+              {t('system_monitor.performance_alerts')}
             </h3>
             
             {alerts.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                <p>No active alerts. System is running smoothly!</p>
+                <CheckCircle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p>{t('system_monitor.no_active_alerts')}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -912,14 +968,9 @@ const SystemMonitor: React.FC = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            (alert.severity || 'low') === 'critical' ? 'bg-red-100 text-red-800' :
-                            (alert.severity || 'low') === 'high' ? 'bg-orange-100 text-orange-800' :
-                            (alert.severity || 'low') === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
+                          <UnifiedBadge variant="secondary" size="sm">
                             {(alert.severity || 'low').toUpperCase()}
-                          </span>
+                          </UnifiedBadge>
                           <span className="text-sm text-gray-500">{alert.timestamp || 'Unknown'}</span>
                         </div>
                         <p className="text-gray-900 font-medium mb-2">{alert.message || 'No message'}</p>
@@ -927,7 +978,7 @@ const SystemMonitor: React.FC = () => {
                         {/* Display recommendations if available */}
                         {alert.recommendations && Array.isArray(alert.recommendations) && (
                           <div className="mt-3">
-                            <p className="text-sm font-medium text-gray-700 mb-2">Recommendations:</p>
+                            <p className="text-sm font-medium text-gray-700 mb-2">{t('system_monitor.recommendations')}</p>
                             <ul className="space-y-1">
                               {alert.recommendations.map((rec, index) => (
                                 <li key={index} className="text-sm text-gray-600 flex items-start gap-2">
@@ -942,20 +993,20 @@ const SystemMonitor: React.FC = () => {
                         {/* Display additional details if available */}
                         {alert.details && (
                           <div className="mt-3 p-3 bg-gray-50 rounded-md">
-                            <p className="text-sm font-medium text-gray-700 mb-2">Details:</p>
+                            <p className="text-sm font-medium text-gray-700 mb-2">{t('system_monitor.details')}</p>
                             {alert.details.table && (
-                              <p className="text-sm text-gray-600">Table: <span className="font-medium">{alert.details.table}</span></p>
+                              <p className="text-sm text-gray-600">{t('system_monitor.table')} <span className="font-medium">{alert.details.table}</span></p>
                             )}
                             {alert.details.row_count && (
-                              <p className="text-sm text-gray-600">Rows: <span className="font-medium">{alert.details.row_count.toLocaleString()}</span></p>
+                              <p className="text-sm text-gray-600">{t('system_monitor.rows')}: <span className="font-medium">{alert.details.row_count.toLocaleString()}</span></p>
                             )}
                             {alert.details.suggestions && Array.isArray(alert.details.suggestions) && (
                               <div className="mt-2">
-                                <p className="text-sm font-medium text-gray-700 mb-1">Specific Actions:</p>
+                                <p className="text-sm font-medium text-gray-700 mb-1">{t('system_monitor.specific_actions')}</p>
                                 <ul className="space-y-1">
                                   {alert.details.suggestions.map((suggestion, index) => (
                                     <li key={index} className="text-sm text-gray-600 flex items-start gap-2">
-                                      <span className="text-green-500 mt-1">→</span>
+                                      <span className="text-gray-500 mt-1">→</span>
                                       <span>{suggestion}</span>
                                     </li>
                                   ))}
@@ -971,7 +1022,7 @@ const SystemMonitor: React.FC = () => {
                           setAlerts(alerts.filter(a => a.id !== alert.id));
                         }}
                         className="text-gray-400 hover:text-gray-600 ml-4"
-                        title="Dismiss alert"
+                        title={t('system_monitor.dismiss_alert')}
                       >
                         ×
                       </button>
@@ -980,31 +1031,31 @@ const SystemMonitor: React.FC = () => {
                 ))}
               </div>
             )}
-          </div>
+          </UnifiedCard>
         )}
 
         {/* Database Optimization History */}
         {!isLoading && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+          <UnifiedCard variant="elevated" className="p-6 mt-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-purple-600" />
-              Database Optimization History
+              <Settings className="w-5 h-5 text-gray-600" />
+              {t('system_monitor.database_optimization_history')}
             </h3>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Timestamp
+                      {t('system_monitor.timestamp')}
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
+                      {t('system_monitor.status')}
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Message
+                      {t('system_monitor.message')}
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Details
+                      {t('system_monitor.details')}
                     </th>
                   </tr>
                 </thead>
@@ -1015,13 +1066,9 @@ const SystemMonitor: React.FC = () => {
                         {new Date(item.timestamp).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          item.status === 'success' ? 'bg-green-100 text-green-800' :
-                          item.status === 'error' ? 'bg-red-100 text-red-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
+                        <UnifiedBadge variant="secondary" size="sm">
                           {item.status.toUpperCase()}
-                        </span>
+                        </UnifiedBadge>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900">
                         {item.message}
@@ -1036,7 +1083,7 @@ const SystemMonitor: React.FC = () => {
                             }}
                             className="text-gray-600 hover:underline text-xs"
                           >
-                            View Details
+                            {t('system_monitor.view_details')}
                           </button>
                         )}
                       </td>
@@ -1045,41 +1092,42 @@ const SystemMonitor: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </UnifiedCard>
         )}
 
         {/* System Information */}
         {!isLoading && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <UnifiedCard variant="elevated" className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Server className="w-5 h-5 text-gray-600" />
-              System Information
+              {t('system_monitor.system_information')}
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-gray-600">Uptime</p>
-                <p className="font-medium">{metrics?.uptime ? `${Math.floor(metrics.uptime / 3600)}h ${Math.floor((metrics.uptime % 3600) / 60)}m` : 'Unknown'}</p>
+                <p className="text-gray-600">{t('system_monitor.uptime')}</p>
+                <p className="font-medium">{metrics?.uptime ? `${Math.floor(metrics.uptime / 3600)}h ${Math.floor((metrics.uptime % 3600) / 60)}m` : t('system_monitor.unknown')}</p>
               </div>
               
               <div>
-                <p className="text-gray-600">Last Update</p>
-                <p className="font-medium">{metrics?.last_update || 'Never'}</p>
+                <p className="text-gray-600">{t('system_monitor.last_update')}</p>
+                <p className="font-medium">{metrics?.last_update || t('system_monitor.never')}</p>
               </div>
               
               <div>
-                <p className="text-gray-600">Environment</p>
+                <p className="text-gray-600">{t('system_monitor.environment')}</p>
                 <p className="font-medium">Production</p>
               </div>
               
               <div>
-                <p className="text-gray-600">Version</p>
+                <p className="text-gray-600">{t('system_monitor.version')}</p>
                 <p className="font-medium">PipLinePro v2.0</p>
               </div>
             </div>
-          </div>
+          </UnifiedCard>
         )}
       </div>
+      </PageLayout>
     </>
   );
 };

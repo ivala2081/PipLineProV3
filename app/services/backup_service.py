@@ -68,10 +68,21 @@ class BackupService:
     
     def _backup_sqlite(self) -> Tuple[bool, str, Optional[str]]:
         """Create SQLite database backup"""
-        source_db = Path("instance/treasury_improved.db")
+        # Try multiple possible database file names
+        possible_db_files = [
+            Path("instance/treasury_fresh.db"),
+            Path("instance/treasury_improved.db"),
+            Path("instance/treasury.db")
+        ]
         
-        if not source_db.exists():
-            return False, "Source database not found", None
+        source_db = None
+        for db_file in possible_db_files:
+            if db_file.exists():
+                source_db = db_file
+                break
+        
+        if not source_db or not source_db.exists():
+            return False, f"Source database not found. Checked: {[str(p) for p in possible_db_files]}", None
         
         # Create timestamped backup
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -26,6 +26,7 @@ from app.utils.api_response import success_response, error_response, paginated_r
 from app.utils.api_error_handler import handle_api_errors, ValidationError
 from app.utils.unified_error_handler import DatabaseError, ResourceNotFoundError, ResourceNotFoundError
 from app.utils.db_transaction import db_transaction
+from app.utils.tenant_helpers import set_tenant_on_new_record, add_tenant_filter, validate_tenant_access
 
 logger = logging.getLogger(__name__)
 api_logger = get_logger('app.api.transactions')
@@ -40,6 +41,7 @@ from app.utils.csrf_decorator import require_csrf
 
 @transactions_api.route("", methods=['POST'])
 @transactions_api.route("/", methods=['POST'])
+@limiter.limit("30 per minute, 500 per hour")  # Rate limiting for transaction creation
 @login_required
 @require_csrf
 @handle_api_errors
@@ -87,7 +89,25 @@ def create_transaction():
     if not category:
         raise ValidationError('Invalid or missing category. Must be DEP or WD', field='category')
     
-    psp = validate_psp_name(data.get('psp', ''))
+    psp_raw = data.get('psp', '')
+    logger.info(f"PSP value received from frontend: '{psp_raw}' (type: {type(psp_raw)}, repr: {repr(psp_raw)})")
+    
+    # Very simple handling - just strip whitespace, no validation
+    # If PSP is provided and not empty after stripping, use it
+    if psp_raw:
+        psp = str(psp_raw).strip()
+        # If it's empty after stripping, set to None
+        if not psp:
+            psp = None
+        # Otherwise, use it as-is (very permissive - no validation)
+    else:
+        psp = None
+    
+    logger.info(f"PSP value after processing: '{psp}' (type: {type(psp)}, repr: {repr(psp)})")
+    
+    # Log a warning if we received a value but it became None
+    if psp is None and psp_raw and str(psp_raw).strip():
+        logger.error(f"ERROR: PSP value '{psp_raw}' became None after processing!")
     company = sanitize_company_name(data.get('company', ''))
     
     # Handle both 'description' and 'notes' fields for backward compatibility
@@ -176,6 +196,8 @@ def create_transaction():
         net_amount_try = net_amount
     
     # Create transaction using transaction helper
+    # Keep PSP as-is (None or string) - don't convert to empty string
+    logger.info(f"Creating transaction with PSP: '{psp}' (type: {type(psp)}, will be saved to database)")
     transaction_id = None
     with db_transaction() as session:
         transaction = Transaction(
@@ -188,7 +210,7 @@ def create_transaction():
             commission=commission,
             net_amount=net_amount,
             currency=currency,
-            psp=psp,
+            psp=psp,  # Use psp directly - can be None or string
             notes=description,
             created_by=current_user.id,
             # TRY amounts and exchange rate
@@ -197,6 +219,9 @@ def create_transaction():
             net_amount_try=net_amount_try,
             exchange_rate=exchange_rate_decimal
         )
+        
+        # Multi-tenancy: Set organization_id automatically
+        set_tenant_on_new_record(transaction)
         
         session.add(transaction)
         session.flush()  # Ensure the transaction gets an ID
@@ -223,6 +248,8 @@ def create_transaction():
     transaction = Transaction.query.get(transaction_id)
     if not transaction:
         raise DatabaseError("Transaction was created but could not be retrieved")
+    
+    logger.info(f"Transaction {transaction_id} reloaded from database - PSP value: '{transaction.psp}'")
     
     # Prepare response data (backward compatible format for frontend)
     transaction_data = {
@@ -295,6 +322,16 @@ def get_clients():
         import time
         start_time = time.time()
         
+        # Get the ACTUAL total count of unique clients (without limit) for accurate summary
+        actual_total_clients = db.session.query(
+            func.count(func.distinct(Transaction.client_name))
+        ).filter(
+            Transaction.client_name.isnot(None),
+            Transaction.client_name != ''
+        ).scalar() or 0
+        
+        logger.info(f"Total unique clients in database: {actual_total_clients}")
+        
         # Get transactions grouped by client with additional data including commission and company
         # First get the basic stats - use converted amounts (amount_try) for proper currency conversion
         client_stats = db.session.query(
@@ -335,7 +372,7 @@ def get_clients():
             Transaction.client_name != ''
         ).group_by(Transaction.client_name).limit(1000).all()  # Limit to 1000 clients for performance
         
-        logger.info(f"Found {len(client_stats)} unique clients")
+        logger.info(f"Found {len(client_stats)} unique clients (limited to 1000 for performance)")
         
         # Get company data for all clients in ONE query (optimized - no N+1 problem)
         # Get all client names from our stats
@@ -610,7 +647,7 @@ def get_clients():
         multi_currency_count = len([c for c in client_metadata_dict.values() if len(c.get('currencies', [])) > 1])
         
         summary = {
-            'total_clients': len(client_stats),
+            'total_clients': actual_total_clients,  # Use actual count, not limited result
             'new_clients_this_month': new_clients_count,
             'avg_transaction_value': avg_transaction_value,
             'multi_currency_count': multi_currency_count,
@@ -642,6 +679,210 @@ def get_clients():
         
         # Return empty array instead of error to prevent UI crashes
         return jsonify([]), 200
+
+@transactions_api.route("/search-clients")
+@login_required
+def search_clients():
+    """Search for clients by name - returns client information and transactions"""
+    try:
+        search_term = request.args.get('q', '').strip()
+        
+        if not search_term or len(search_term) < 2:
+            return jsonify({
+                'clients': [],
+                'transactions': [],
+                'message': 'Search term must be at least 2 characters'
+            }), 200
+        
+        # Search for clients matching the search term (case insensitive)
+        # Get unique client names that match
+        matching_clients_query = db.session.query(
+            Transaction.client_name
+        ).filter(
+            Transaction.client_name.isnot(None),
+            Transaction.client_name != '',
+            func.lower(Transaction.client_name).like(f'%{search_term.lower()}%')
+        ).distinct().limit(20).all()
+        
+        client_names = [row[0] for row in matching_clients_query]
+        
+        if not client_names:
+            return jsonify({
+                'clients': [],
+                'transactions': [],
+                'message': f'No clients found matching "{search_term}"'
+            }), 200
+        
+        # Get client statistics for matching clients
+        client_stats = db.session.query(
+            Transaction.client_name,
+            func.count(Transaction.id).label('transaction_count'),
+            func.sum(func.coalesce(Transaction.amount_try, Transaction.amount)).label('total_amount'),
+            func.sum(func.coalesce(Transaction.commission_try, Transaction.commission)).label('total_commission'),
+            func.min(Transaction.date).label('first_transaction'),
+            func.max(Transaction.date).label('last_transaction')
+        ).filter(
+            Transaction.client_name.in_(client_names)
+        ).group_by(Transaction.client_name).all()
+        
+        # Get recent transactions for these clients
+        recent_transactions = db.session.query(Transaction).filter(
+            Transaction.client_name.in_(client_names)
+        ).order_by(Transaction.date.desc(), Transaction.created_at.desc()).limit(50).all()
+        
+        # Format client data
+        clients_data = []
+        for client in client_stats:
+            clients_data.append({
+                'client_name': client.client_name,
+                'transaction_count': client.transaction_count,
+                'total_amount': float(client.total_amount) if client.total_amount else 0.0,
+                'total_commission': float(client.total_commission) if client.total_commission else 0.0,
+                'first_transaction': client.first_transaction.strftime('%Y-%m-%d') if client.first_transaction else None,
+                'last_transaction': client.last_transaction.strftime('%Y-%m-%d') if client.last_transaction else None,
+            })
+        
+        # Format transaction data
+        transactions_data = []
+        for tx in recent_transactions:
+            transactions_data.append({
+                'id': tx.id,
+                'client_name': tx.client_name,
+                'date': tx.date.strftime('%Y-%m-%d') if tx.date else None,
+                'amount': float(tx.amount) if tx.amount else 0.0,
+                'currency': tx.currency,
+                'category': tx.category,
+                'psp': tx.psp,
+                'payment_method': tx.payment_method,
+                'commission': float(tx.commission) if tx.commission else 0.0,
+                'net_amount': float(tx.net_amount) if tx.net_amount else 0.0,
+            })
+        
+        return jsonify({
+            'clients': clients_data,
+            'transactions': transactions_data,
+            'search_term': search_term,
+            'total_clients': len(clients_data),
+            'total_transactions': len(transactions_data)
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in search_clients endpoint: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'error': 'Failed to search clients',
+            'clients': [],
+            'transactions': []
+        }), 500
+
+@transactions_api.route("/client-details/<path:client_name>")
+@login_required
+def get_client_details(client_name):
+    """Get comprehensive details for a specific client"""
+    try:
+        # Decode the client name from URL path
+        from urllib.parse import unquote
+        decoded_client_name = unquote(client_name)
+        if not decoded_client_name:
+            return jsonify({'error': 'Client name is required'}), 400
+        
+        # Get all transactions for this client
+        client_transactions = db.session.query(Transaction).filter(
+            Transaction.client_name == decoded_client_name
+        ).order_by(Transaction.date.desc(), Transaction.created_at.desc()).all()
+        
+        if not client_transactions:
+            return jsonify({
+                'error': f'Client "{decoded_client_name}" not found',
+                'client_name': decoded_client_name
+            }), 404
+        
+        # Calculate comprehensive statistics
+        total_amount = sum(float(tx.amount_try) if tx.amount_try else float(tx.amount or 0) for tx in client_transactions)
+        total_commission = sum(float(tx.commission_try) if tx.commission_try else float(tx.commission or 0) for tx in client_transactions)
+        total_net = sum(float(tx.net_amount or 0) for tx in client_transactions)
+        
+        # Calculate deposits and withdrawals
+        deposits = sum(
+            abs(float(tx.amount_try) if tx.amount_try else float(tx.amount or 0))
+            for tx in client_transactions
+            if tx.category and tx.category.upper() in ['DEP', 'DEPOSIT', 'INVESTMENT']
+        )
+        withdrawals = sum(
+            abs(float(tx.amount_try) if tx.amount_try else float(tx.amount or 0))
+            for tx in client_transactions
+            if tx.category and tx.category.upper() in ['WD', 'WITHDRAW', 'WITHDRAWAL']
+        )
+        
+        # Get unique values
+        currencies = list(set(tx.currency for tx in client_transactions if tx.currency))
+        psps = list(set(tx.psp for tx in client_transactions if tx.psp))
+        payment_methods = list(set(tx.payment_method for tx in client_transactions if tx.payment_method))
+        categories = list(set(tx.category for tx in client_transactions if tx.category))
+        
+        # Get company name (most recent)
+        company_name = None
+        for tx in client_transactions:
+            if tx.company:
+                company_name = tx.company
+                break
+        
+        # Get date range
+        dates = [tx.date for tx in client_transactions if tx.date]
+        first_transaction = min(dates).strftime('%Y-%m-%d') if dates else None
+        last_transaction = max(dates).strftime('%Y-%m-%d') if dates else None
+        
+        # Calculate average transaction
+        avg_transaction = total_amount / len(client_transactions) if client_transactions else 0
+        
+        # Format transactions
+        transactions_data = []
+        for tx in client_transactions:
+            transactions_data.append({
+                'id': tx.id,
+                'date': tx.date.strftime('%Y-%m-%d') if tx.date else None,
+                'amount': float(tx.amount_try) if tx.amount_try else float(tx.amount or 0),
+                'currency': tx.currency,
+                'category': tx.category,
+                'psp': tx.psp,
+                'payment_method': tx.payment_method,
+                'commission': float(tx.commission_try) if tx.commission_try else float(tx.commission or 0),
+                'net_amount': float(tx.net_amount or 0),
+                'company': tx.company,
+                'notes': tx.notes,
+            })
+        
+        return jsonify({
+            'client_name': decoded_client_name,
+            'company_name': company_name,
+            'statistics': {
+                'transaction_count': len(client_transactions),
+                'total_amount': total_amount,
+                'total_commission': total_commission,
+                'total_net': total_net,
+                'total_deposits': deposits,
+                'total_withdrawals': withdrawals,
+                'avg_transaction': avg_transaction,
+                'first_transaction': first_transaction,
+                'last_transaction': last_transaction,
+            },
+            'metadata': {
+                'currencies': currencies,
+                'psps': psps,
+                'payment_methods': payment_methods,
+                'categories': categories,
+            },
+            'transactions': transactions_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in get_client_details endpoint: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'error': 'Failed to fetch client details'
+        }), 500
 
 @transactions_api.route("/psp_summary_stats")
 @login_required
@@ -1873,6 +2114,9 @@ def get_transactions():
     # Build query
     query = Transaction.query
     
+    # Multi-tenancy: Apply organization filter
+    query = add_tenant_filter(query, Transaction)
+    
     # Log total transactions before any filters
     total_before_filters = query.count()
     logger.debug(f"Total transactions before filters: {total_before_filters}")
@@ -2048,6 +2292,10 @@ def get_transactions():
                         commission = 0.0
                         net_amount = float(transaction.amount)
             
+            # Ensure PSP is properly serialized (None becomes None, not empty string)
+            psp_value = transaction.psp if transaction.psp else None
+            logger.debug(f"Transaction {transaction.id} PSP value: {repr(psp_value)}")
+            
             transactions.append({
                 'id': transaction.id,
                 'client_name': transaction.client_name,
@@ -2058,7 +2306,7 @@ def get_transactions():
                 'commission': commission,
                 'net_amount': net_amount,
                 'currency': transaction.currency,
-                'psp': transaction.psp,
+                'psp': psp_value,  # Use psp_value to ensure proper serialization
                 'date': transaction.date.strftime('%Y-%m-%d') if transaction.date else None,
                 'created_at': transaction.created_at.isoformat() if transaction.created_at else None,
                 'notes': transaction.notes,
@@ -2276,6 +2524,7 @@ def add_dropdown_option():
         }), 500
 
 @transactions_api.route("/dropdown-options/<int:option_id>", methods=['PUT'])
+@limiter.limit("30 per minute, 200 per hour")  # Rate limiting for configuration changes
 @require_csrf
 @login_required
 @require_permission('transactions:manage_options')
@@ -2469,6 +2718,7 @@ def update_dropdown_option(option_id):
         }), 500
 
 @transactions_api.route("/dropdown-options/<int:option_id>", methods=['DELETE'])
+@limiter.limit("20 per minute, 100 per hour")  # Rate limiting for deletions
 @require_csrf
 @login_required
 @require_permission('transactions:manage_options')
@@ -2535,6 +2785,7 @@ def delete_dropdown_option(option_id):
         }), 500
 
 @transactions_api.route("/<int:transaction_id>", methods=['DELETE'])
+@limiter.limit("20 per minute, 100 per hour")  # Rate limiting for deletions
 @login_required
 @handle_api_errors
 def delete_transaction(transaction_id):
@@ -2547,13 +2798,21 @@ def delete_transaction(transaction_id):
         )), 401
     
     # Find the transaction
+    logger.info(f"Attempting to delete transaction {transaction_id} by user {current_user.username}")
     transaction = Transaction.query.get(transaction_id)
     if not transaction:
-        raise ResourceNotFoundError(
-            'Transaction',
-            transaction_id,
-            f'Transaction with ID {transaction_id} does not exist'
-        )
+        logger.warning(f"Transaction {transaction_id} not found for deletion by user {current_user.username}")
+        # Check if transaction was recently deleted (might be a race condition)
+        logger.info(f"Querying all transactions to verify: {Transaction.query.count()} total transactions exist")
+        return jsonify({
+            'error': 'Transaction not found',
+            'message': f'Transaction with ID {transaction_id} does not exist'
+        }), 404
+    
+    # Multi-tenancy: Validate access
+    is_valid, error = validate_tenant_access(transaction, "transaction")
+    if not is_valid:
+        return error
     
     # Store transaction info for response
     transaction_info = {
@@ -2565,15 +2824,25 @@ def delete_transaction(transaction_id):
     }
     
     # Delete transaction using service (includes automatic PSP sync)
-    from app.services.transaction_service import TransactionService
-    TransactionService.delete_transaction(transaction.id, current_user.id)
-    
-    return jsonify(success_response(
-        data={
-            'transaction': transaction_info
-        },
-        message='Transaction deleted successfully'
-    )), 200
+    try:
+        from app.services.transaction_service import TransactionService
+        TransactionService.delete_transaction(transaction.id, current_user.id)
+        
+        logger.info(f"Transaction {transaction_id} deleted successfully by user {current_user.username}")
+        
+        return jsonify(success_response(
+            data={
+                'transaction': transaction_info
+            },
+            message='Transaction deleted successfully'
+        )), 200
+    except Exception as e:
+        logger.error(f"Error deleting transaction {transaction_id}: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return jsonify(error_response(
+            ErrorCode.INTERNAL_ERROR.value,
+            f'Failed to delete transaction: {str(e)}'
+        )), 500
 
 @transactions_api.route("/<int:transaction_id>", methods=['GET'])
 @login_required
@@ -2623,6 +2892,7 @@ def get_transaction(transaction_id):
         }), 500
 
 @transactions_api.route("/<int:transaction_id>", methods=['PUT'])
+@limiter.limit("30 per minute, 500 per hour")  # Rate limiting for updates
 @login_required
 @require_csrf
 def update_transaction(transaction_id):
@@ -2654,6 +2924,11 @@ def update_transaction(transaction_id):
                 'error': 'Transaction not found',
                 'message': f'Transaction with ID {transaction_id} does not exist'
             }), 404
+        
+        # Multi-tenancy: Validate access
+        is_valid, error = validate_tenant_access(transaction, "transaction")
+        if not is_valid:
+            return error
         
         # Validate required fields
         client_name = data.get('client_name', '').strip()

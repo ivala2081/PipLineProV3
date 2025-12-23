@@ -253,6 +253,46 @@ class ConfigManager:
             'monitoring_enabled': self.get('DB_CONNECTION_MONITORING', True),
         }
     
+    def get_system_monitor_config(self) -> Dict[str, Any]:
+        """Get System Monitor configuration from JSON file or environment variables"""
+        import json
+        import os
+        
+        # Try to load from JSON file first
+        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config', 'system_monitor_config.json')
+        default_config = {
+            "refresh_intervals": {"default": 30, "options": [15, 30, 60, 300], "auto_refresh_enabled": True},
+            "thresholds": {
+                "cpu": {"warning": 80, "critical": 95},
+                "memory": {"warning": 85, "critical": 95},
+                "disk": {"warning": 85, "critical": 95},
+                "response_time": {"warning_ms": 2000, "critical_ms": 5000},
+                "error_rate": {"warning_percent": 5, "critical_percent": 10},
+                "cache_hit_rate": {"warning_percent": 50, "critical_percent": 30},
+                "database_pool": {"warning_percent": 80, "critical_percent": 95}
+            },
+            "alerting": {"enabled": True, "max_alerts_displayed": 50},
+            "database_optimization": {"enabled": True, "auto_run_interval_hours": 24},
+            "display_settings": {"show_system_resources": True, "show_application_performance": True}
+        }
+        
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    file_config = json.load(f)
+                    return file_config.get('system_monitor', default_config)
+        except Exception as e:
+            logger.warning(f"Could not load System Monitor config from file: {e}")
+        
+        # Fall back to environment variables or defaults
+        config = default_config.copy()
+        
+        # Override with environment variables if set
+        if self.get('SYSTEM_MONITOR_REFRESH_INTERVAL'):
+            config['refresh_intervals']['default'] = int(self.get('SYSTEM_MONITOR_REFRESH_INTERVAL'))
+        
+        return config
+    
     def get_logging_config(self) -> Dict[str, Any]:
         """Get logging configuration"""
         return {

@@ -38,6 +38,7 @@ def setup_development_environment():
     """Set up development environment variables"""
     # Set development environment
     os.environ['FLASK_ENV'] = 'development'
+    
     os.environ['DEBUG'] = 'True'
     
     # SECRET_KEY should NEVER be hardcoded in production
@@ -132,7 +133,6 @@ def main():
         from werkzeug.security import generate_password_hash
         
         app = create_app()
-        
         print("Application created successfully")
         
         # Initialize Sentry error tracking

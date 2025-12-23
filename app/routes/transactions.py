@@ -25,6 +25,31 @@ from app.services.datetime_fix_service import fix_template_data_dates
 
 logger = logging.getLogger(__name__)
 
+def normalize_payment_method(payment_method):
+    """Normalize payment method to standard categories: BANK, CC, TETHER, or OTHER"""
+    if not payment_method:
+        return 'OTHER'
+    
+    pm_str = str(payment_method).strip()
+    if not pm_str:
+        return 'OTHER'
+    
+    pm_lower = pm_str.lower()
+    
+    # Bank variations (includes IBAN transfers)
+    if any(keyword in pm_lower for keyword in ['bank', 'banka', 'havale', 'eft', 'wire', 'transfer', 'iban']):
+        return 'BANK'
+    
+    # Credit card variations
+    if any(keyword in pm_lower for keyword in ['kk', 'credit', 'card', 'kredi', 'visa', 'mastercard', 'amex']):
+        return 'CC'
+    
+    # Tether variations
+    if any(keyword in pm_lower for keyword in ['tether', 'usdt', 'crypto', 'kasa']):
+        return 'TETHER'
+    
+    return 'OTHER'
+
 # Create blueprint
 transactions_bp = Blueprint('transactions', __name__)
 
@@ -546,14 +571,26 @@ def edit_transaction(id):
     return serve_frontend(f'/transactions/{id}/edit')
 
 @transactions_bp.route('/delete/<int:id>', methods=['POST'])
+@transactions_bp.route('/<int:id>', methods=['DELETE'])  # Add DELETE method support for /transactions/<id>
 @login_required
 @handle_errors
 def delete_transaction(id):
-    """Delete transaction"""
+    """Delete transaction - supports both POST /delete/<id> and DELETE /<id>"""
     # Reduced logging verbosity - only log in debug mode or errors
-    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.method == 'DELETE'
     
-    transaction = Transaction.query.get_or_404(id)
+    transaction = Transaction.query.get(id)
+    if not transaction:
+        logger.error(f"Transaction {id} not found for deletion")
+        if is_ajax or request.method == 'DELETE':
+            return jsonify({
+                'success': False,
+                'error': 'Transaction not found',
+                'message': f'Transaction with ID {id} does not exist'
+            }), 404
+        else:
+            flash(f'Transaction with ID {id} not found.', 'error')
+            return redirect(url_for('transactions.clients'))
     
     try:
         # Store old values for audit
@@ -573,7 +610,7 @@ def delete_transaction(id):
         # except Exception as audit_error:
         #     logger.error(f"Audit logging failed but transaction was deleted: {str(audit_error)}")
         
-        if is_ajax:
+        if is_ajax or request.method == 'DELETE':
             return jsonify({
                 'success': True,
                 'message': 'Transaction deleted successfully!',
@@ -586,10 +623,11 @@ def delete_transaction(id):
         db.session.rollback()
         logger.error(f"Error deleting transaction {id}: {str(e)}", exc_info=True)
         
-        if is_ajax:
+        if is_ajax or request.method == 'DELETE':
             return jsonify({
                 'success': False,
-                'message': 'Error deleting transaction. Please try again.'
+                'error': 'Failed to delete transaction',
+                'message': f'Error deleting transaction: {str(e)}'
             }), 500
         else:
             flash('Error deleting transaction. Please try again.', 'error')
@@ -1414,8 +1452,8 @@ def daily_summary(date):
         
         # Payment method data will be calculated later in the comprehensive calculation
         
-        # Get unique clients
-        unique_clients = len(set(t.client_name for t in transactions if t.client_name))
+        # Get unique clients (filter out None and empty strings)
+        unique_clients = len(set(t.client_name for t in transactions if t.client_name and str(t.client_name).strip()))
         
         # Format PSP data for template
         psp_summary = []
@@ -1575,8 +1613,6 @@ def api_summary(date):
         
         for transaction in transactions:
             amount = decimal_float_service.safe_decimal(transaction.amount)
-            commission = decimal_float_service.safe_decimal(transaction.commission)
-            net_amount = decimal_float_service.safe_decimal(transaction.net_amount)
             
             # Determine if this is a deposit or withdrawal based on category and amount sign
             # Withdrawals may be stored as negative amounts, deposits as positive
@@ -1584,9 +1620,46 @@ def api_summary(date):
                 transaction.category and transaction.category.upper() in ['WD', 'WITHDRAW', 'WITHDRAWAL']
             ) or (amount < 0)  # Also check if amount is negative
             
+            # Handle commission - withdrawals always have 0 commission, deposits need calculation
+            if is_withdrawal:
+                commission = Decimal('0')
+            else:
+                # For deposits, get or calculate commission
+                commission = decimal_float_service.safe_decimal(transaction.commission)
+                
+                # If commission is 0 or None, try to calculate it
+                if commission is None or commission == Decimal('0'):
+                    # Try to get commission rate from PSP
+                    try:
+                        from app.models.config import Option
+                        psp_option = Option.query.filter_by(
+                            field_name='psp',
+                            value=transaction.psp,
+                            is_active=True
+                        ).first()
+                        
+                        if psp_option and psp_option.commission_rate is not None:
+                            commission = abs(amount) * psp_option.commission_rate
+                            logger.info(f"Transaction {transaction.id}: Calculated commission {commission} using PSP rate {psp_option.commission_rate} for amount {amount}")
+                        else:
+                            # Default 2.5% commission rate for DEP transactions
+                            commission = abs(amount) * Decimal('0.025')
+                            logger.info(f"Transaction {transaction.id}: Using default 2.5% commission rate, calculated {commission} for amount {amount}")
+                    except Exception as e:
+                        logger.warning(f"Error calculating commission for transaction {transaction.id}: {e}")
+                        # Default 2.5% commission rate as fallback
+                        commission = abs(amount) * Decimal('0.025')
+            
+            # Ensure commission is not None
+            if commission is None:
+                commission = Decimal('0')
+            
+            net_amount = decimal_float_service.safe_decimal(transaction.net_amount)
+            
             if transaction.currency and transaction.currency.upper() == 'USD':
                 if is_withdrawal:
-                    total_withdrawals_usd += amount
+                    # Withdrawals should be stored as positive values for correct NET calculation
+                    total_withdrawals_usd += abs(amount)
                 else:
                     total_deposits_usd += amount
                 total_commission_usd += commission
@@ -1625,6 +1698,9 @@ def api_summary(date):
                     total_deposits_tl += amount
                     total_net_tl += net_amount  # Add deposits to net balance
                 total_commission_tl += commission
+        
+        # Log commission totals for debugging
+        logger.info(f"Daily Summary {date}: Total commission TL={total_commission_tl}, Total commission USD={total_commission_usd}, Transaction count={len(transactions)}")
         
         # Calculate totals using DEP + (-WD) formula
         # Withdrawals are stored as positive amounts, but we treat them as negative in calculations
@@ -1748,6 +1824,174 @@ def api_summary(date):
             # Fallback if no rate available
             gross_balance_tl = try_net
         
+        # Calculate totals for normalized payment methods (BANK, CC, TETHER)
+        # Include both deposits and withdrawals in payment method totals
+        # Withdrawals are negative, deposits are positive - preserve the sign
+        payment_method_totals = {
+            'BANK': {'amount_tl': Decimal('0'), 'amount_usd': Decimal('0'), 'count': 0},
+            'CC': {'amount_tl': Decimal('0'), 'amount_usd': Decimal('0'), 'count': 0},
+            'TETHER': {'amount_tl': Decimal('0'), 'amount_usd': Decimal('0'), 'count': 0}
+        }
+        
+        # Debug: Log all payment methods found
+        payment_methods_found = {}
+        transaction_details = []  # For detailed debugging
+        
+        for transaction in transactions:
+            normalized_method = normalize_payment_method(transaction.payment_method)
+            
+            # Track payment methods for debugging
+            if transaction.payment_method:
+                pm_key = str(transaction.payment_method).strip()
+                if pm_key not in payment_methods_found:
+                    payment_methods_found[pm_key] = {'normalized': normalized_method, 'count': 0}
+                payment_methods_found[pm_key]['count'] += 1
+            
+            if normalized_method in ['BANK', 'CC', 'TETHER']:
+                amount = decimal_float_service.safe_decimal(transaction.amount)
+                is_withdrawal = (
+                    transaction.category and transaction.category.upper() in ['WD', 'WITHDRAW', 'WITHDRAWAL']
+                ) or (amount < 0)
+                
+                # Use GROSS amounts (amount_try) for payment method totals
+                # Include both deposits and withdrawals - preserve sign (negative for withdrawals, positive for deposits)
+                # The spreadsheet shows BANK = gross amount before commission
+                # Use amount_try if available (already converted to TRY), otherwise convert amount
+                amount_try = decimal_float_service.safe_decimal(transaction.amount_try) if transaction.amount_try else None
+                
+                # Apply sign based on category: withdrawals should be negative, deposits positive
+                # If amount is already negative, keep it; if positive but category is WD, make it negative
+                if is_withdrawal and amount > 0:
+                    amount = -amount
+                    if amount_try and amount_try > 0:
+                        amount_try = -amount_try
+                
+                if normalized_method == 'TETHER':
+                    # TETHER always uses USD - use GROSS USD amount (before commission)
+                    # Preserve sign: withdrawals are negative, deposits are positive
+                    if transaction.currency and transaction.currency.upper() == 'USD':
+                        # Use original USD amount (preserve sign - negative for withdrawals)
+                        payment_method_totals[normalized_method]['amount_usd'] += amount
+                    elif amount_try is not None:
+                        # TETHER with amount_try - convert back to USD using exchange rate
+                        # Preserve sign: if amount_try is negative (withdrawal), result should be negative
+                        transaction_rate = transaction.exchange_rate if transaction.exchange_rate else usd_rate
+                        if transaction_rate and transaction_rate != Decimal('0'):
+                            # Preserve sign of amount_try when converting
+                            converted_amount = decimal_float_service.safe_divide(amount_try, transaction_rate, 'decimal')
+                            payment_method_totals[normalized_method]['amount_usd'] += converted_amount
+                        else:
+                            converted_amount = decimal_float_service.safe_divide(amount_try, usd_rate, 'decimal') if usd_rate and usd_rate != Decimal('0') else amount_try
+                            payment_method_totals[normalized_method]['amount_usd'] += converted_amount
+                    else:
+                        # TETHER in TL is unusual, but convert to USD
+                        # Preserve sign when converting
+                        if usd_rate and usd_rate != Decimal('0'):
+                            converted_amount = decimal_float_service.safe_divide(amount, usd_rate, 'decimal')
+                            payment_method_totals[normalized_method]['amount_usd'] += converted_amount
+                        else:
+                            payment_method_totals[normalized_method]['amount_usd'] += amount
+                else:
+                    # BANK/CC: use GROSS TL amounts - prefer amount_try if available
+                    # Preserve sign: withdrawals are negative, deposits are positive
+                    if transaction.currency and transaction.currency.upper() == 'USD':
+                        # USD transaction - use amount_try if available, otherwise convert amount
+                        if amount_try is not None:
+                            # Preserve sign of amount_try
+                            payment_method_totals[normalized_method]['amount_tl'] += amount_try
+                        else:
+                            # Convert GROSS USD to TL using exchange rate - preserve sign
+                            transaction_rate = transaction.exchange_rate if transaction.exchange_rate else usd_rate
+                            if transaction_rate and transaction_rate != Decimal('0'):
+                                amount_tl = decimal_float_service.safe_multiply(amount, transaction_rate, 'decimal')
+                                payment_method_totals[normalized_method]['amount_tl'] += amount_tl
+                            else:
+                                payment_method_totals[normalized_method]['amount_tl'] += amount
+                        # Also track USD for BANK/CC (preserve sign)
+                        payment_method_totals[normalized_method]['amount_usd'] += amount
+                    else:
+                        # TL/TRY transaction - use GROSS amount directly (or amount_try if set)
+                        # Preserve sign
+                        if amount_try is not None:
+                            payment_method_totals[normalized_method]['amount_tl'] += amount_try
+                        else:
+                            payment_method_totals[normalized_method]['amount_tl'] += amount
+                        # Convert to USD for tracking (preserve sign)
+                        if usd_rate and usd_rate != Decimal('0'):
+                            if amount_try is not None:
+                                converted_amount = decimal_float_service.safe_divide(amount_try, usd_rate, 'decimal')
+                                payment_method_totals[normalized_method]['amount_usd'] += converted_amount
+                            else:
+                                converted_amount = decimal_float_service.safe_divide(amount, usd_rate, 'decimal')
+                                payment_method_totals[normalized_method]['amount_usd'] += converted_amount
+                        else:
+                            payment_method_totals[normalized_method]['amount_usd'] += amount
+                
+                payment_method_totals[normalized_method]['count'] += 1
+                
+                # Debug logging for each transaction
+                transaction_details.append({
+                    'id': transaction.id,
+                    'payment_method': transaction.payment_method,
+                    'normalized': normalized_method,
+                    'category': transaction.category,
+                    'amount': float(amount),
+                    'amount_try': float(amount_try) if amount_try else None,
+                    'currency': transaction.currency,
+                    'exchange_rate': float(transaction.exchange_rate) if transaction.exchange_rate else None,
+                    'is_withdrawal': is_withdrawal,
+                    'added_to_tl': float(payment_method_totals[normalized_method]['amount_tl']),
+                    'added_to_usd': float(payment_method_totals[normalized_method]['amount_usd'])
+                })
+        
+        # Log payment method summary for debugging
+        if payment_methods_found:
+            logger.info(f"Daily Summary {date}: Payment methods found: {payment_methods_found}")
+            logger.info(f"Daily Summary {date}: Payment method totals: BANK={payment_method_totals['BANK']}, CC={payment_method_totals['CC']}, TETHER={payment_method_totals['TETHER']}")
+            
+            # Detailed transaction breakdown for debugging
+            if date == '2025-12-08':
+                logger.info(f"DEBUG Dec 8 - Total transactions: {len(transactions)}")
+                logger.info(f"DEBUG Dec 8 - Transaction details: {transaction_details}")
+                bank_transactions = [t for t in transaction_details if t.get('normalized') == 'BANK' and not t.get('skipped')]
+                tether_transactions = [t for t in transaction_details if t.get('normalized') == 'TETHER' and not t.get('skipped')]
+                
+                # Calculate expected totals
+                bank_total_tl = 0
+                bank_total_usd = 0
+                tether_total_usd = 0
+                
+                for t in bank_transactions:
+                    logger.info(f"DEBUG Dec 8 - BANK transaction {t.get('id')}: payment_method='{t.get('payment_method')}', category='{t.get('category')}', amount={t.get('amount')}, amount_try={t.get('amount_try')}, currency='{t.get('currency')}', exchange_rate={t.get('exchange_rate')}, added_to_tl={t.get('added_to_tl')}")
+                    # Sum using amount_try if available, otherwise use amount
+                    if t.get('amount_try') is not None:
+                        bank_total_tl += abs(t.get('amount_try', 0))
+                    elif t.get('currency') != 'USD':
+                        bank_total_tl += abs(t.get('amount', 0))
+                    else:
+                        bank_total_usd += abs(t.get('amount', 0))
+                
+                for t in tether_transactions:
+                    logger.info(f"DEBUG Dec 8 - TETHER transaction {t.get('id')}: payment_method='{t.get('payment_method')}', category='{t.get('category')}', amount={t.get('amount')}, currency='{t.get('currency')}', added_to_usd={t.get('added_to_usd')}")
+                    if t.get('currency') == 'USD':
+                        tether_total_usd += abs(t.get('amount', 0))
+                
+                logger.info(f"DEBUG Dec 8 - BANK deposits: {len(bank_transactions)} transactions")
+                logger.info(f"DEBUG Dec 8 - BANK total TL (from transactions): {bank_total_tl}")
+                logger.info(f"DEBUG Dec 8 - BANK total USD (from transactions): {bank_total_usd}")
+                logger.info(f"DEBUG Dec 8 - BANK calculated total TL: {payment_method_totals['BANK']['amount_tl']}")
+                logger.info(f"DEBUG Dec 8 - TETHER deposits: {len(tether_transactions)} transactions")
+                logger.info(f"DEBUG Dec 8 - TETHER total USD (from transactions): {tether_total_usd}")
+                logger.info(f"DEBUG Dec 8 - TETHER calculated total USD: {payment_method_totals['TETHER']['amount_usd']}")
+                
+                # Also log all transactions with their payment methods
+                logger.info(f"DEBUG Dec 8 - All transactions with payment methods:")
+                for txn in transactions:
+                    is_wd = (txn.category and txn.category.upper() in ['WD', 'WITHDRAW', 'WITHDRAWAL']) or (txn.amount and txn.amount < 0)
+                    logger.info(f"  Transaction {txn.id}: payment_method='{txn.payment_method}', normalized='{normalize_payment_method(txn.payment_method)}', category='{txn.category}', is_withdrawal={is_wd}, amount={txn.amount}, amount_try={txn.amount_try}, net_amount={txn.net_amount}, net_amount_try={txn.net_amount_try}, currency='{txn.currency}', exchange_rate={txn.exchange_rate}")
+        else:
+            logger.warning(f"Daily Summary {date}: No payment methods found in {len(transactions)} transactions")
+        
         # Format data for JSON response
         summary_data = {
             'date': date,
@@ -1766,7 +2010,24 @@ def api_summary(date):
             'total_withdrawals_tl': float(total_withdrawals_tl),
             'total_withdrawals_usd': float(total_withdrawals_usd),
             'transaction_count': len(transactions),
-            'unique_clients': len(set(t.client_name for t in transactions if t.client_name)),
+            'unique_clients': len(set(t.client_name for t in transactions if t.client_name and str(t.client_name).strip())),
+            'payment_method_totals': {
+                'BANK': {
+                    'amount_tl': float(payment_method_totals['BANK']['amount_tl']),
+                    'amount_usd': float(payment_method_totals['BANK']['amount_usd']),
+                    'count': payment_method_totals['BANK']['count']
+                },
+                'CC': {
+                    'amount_tl': float(payment_method_totals['CC']['amount_tl']),
+                    'amount_usd': float(payment_method_totals['CC']['amount_usd']),
+                    'count': payment_method_totals['CC']['count']
+                },
+                'TETHER': {
+                    'amount_tl': float(payment_method_totals['TETHER']['amount_tl']),
+                    'amount_usd': float(payment_method_totals['TETHER']['amount_usd']),
+                    'count': payment_method_totals['TETHER']['count']
+                }
+            },
             'psp_summary': [
                 {
                     'name': psp,
@@ -1925,7 +2186,37 @@ def api_summary_batch():
             
             for transaction in transactions:
                 amount = decimal_float_service.safe_decimal(transaction.amount)
+                # Handle commission - if None or 0, try to calculate it for DEP transactions
                 commission = decimal_float_service.safe_decimal(transaction.commission)
+                
+                # Check if this is a deposit (not withdrawal)
+                is_deposit = transaction.category and transaction.category.upper() not in ['WD', 'WITHDRAW', 'WITHDRAWAL']
+                
+                # If commission is 0 or None and this is a DEP transaction, try to calculate it
+                if (commission is None or commission == Decimal('0')) and is_deposit:
+                    # Try to get commission rate from PSP
+                    try:
+                        from app.models.config import Option
+                        psp_option = Option.query.filter_by(
+                            field_name='psp',
+                            value=transaction.psp,
+                            is_active=True
+                        ).first()
+                        
+                        if psp_option and psp_option.commission_rate is not None:
+                            commission = abs(amount) * psp_option.commission_rate
+                        else:
+                            # Default 2.5% commission rate for DEP transactions
+                            commission = abs(amount) * Decimal('0.025')
+                    except Exception as e:
+                        logger.warning(f"Error calculating commission for transaction {transaction.id}: {e}")
+                        # Default 2.5% commission rate as fallback
+                        commission = abs(amount) * Decimal('0.025')
+                
+                # Ensure commission is not None
+                if commission is None:
+                    commission = Decimal('0')
+                
                 net_amount = decimal_float_service.safe_decimal(transaction.net_amount)
                 
                 is_withdrawal = (
@@ -1984,6 +2275,74 @@ def api_summary_batch():
                 # Fallback if no rate available
                 gross_balance_tl = try_net
             
+            # Calculate totals for normalized payment methods (BANK, CC, TETHER)
+            payment_method_totals = {
+                'BANK': {'amount_tl': Decimal('0'), 'amount_usd': Decimal('0'), 'count': 0},
+                'CC': {'amount_tl': Decimal('0'), 'amount_usd': Decimal('0'), 'count': 0},
+                'TETHER': {'amount_tl': Decimal('0'), 'amount_usd': Decimal('0'), 'count': 0}
+            }
+            
+            for transaction in transactions:
+                normalized_method = normalize_payment_method(transaction.payment_method)
+                
+                if normalized_method in ['BANK', 'CC', 'TETHER']:
+                    amount = decimal_float_service.safe_decimal(transaction.amount)
+                    is_withdrawal = (
+                        transaction.category and transaction.category.upper() in ['WD', 'WITHDRAW', 'WITHDRAWAL']
+                    ) or (amount < 0)
+                    
+                    # IMPORTANT: Only count DEPOSITS for payment method totals
+                    if is_withdrawal:
+                        continue  # Skip withdrawals
+                    
+                    # For deposits only, use GROSS amounts (amount_try) for payment method totals
+                    # The spreadsheet shows BANK = gross amount before commission
+                    # Use amount_try if available (already converted to TRY), otherwise convert amount
+                    amount_try = decimal_float_service.safe_decimal(transaction.amount_try) if transaction.amount_try else None
+                    
+                    if normalized_method == 'TETHER':
+                        # TETHER always uses USD - use GROSS USD amount (before commission)
+                        if transaction.currency and transaction.currency.upper() == 'USD':
+                            payment_method_totals[normalized_method]['amount_usd'] += abs(amount)
+                        else:
+                            # TETHER in TL is unusual, but convert to USD
+                            if usd_rate and usd_rate != Decimal('0'):
+                                payment_method_totals[normalized_method]['amount_usd'] += abs(decimal_float_service.safe_divide(amount, usd_rate, 'decimal'))
+                            else:
+                                payment_method_totals[normalized_method]['amount_usd'] += abs(amount)
+                    else:
+                        # BANK/CC: use GROSS TL amounts - prefer amount_try if available
+                        if transaction.currency and transaction.currency.upper() == 'USD':
+                            # USD transaction - use amount_try if available, otherwise convert amount
+                            if amount_try is not None:
+                                payment_method_totals[normalized_method]['amount_tl'] += abs(amount_try)
+                            else:
+                                # Convert GROSS USD to TL using exchange rate
+                                transaction_rate = transaction.exchange_rate if transaction.exchange_rate else usd_rate
+                                if transaction_rate and transaction_rate != Decimal('0'):
+                                    amount_tl = abs(decimal_float_service.safe_multiply(amount, transaction_rate, 'decimal'))
+                                    payment_method_totals[normalized_method]['amount_tl'] += amount_tl
+                                else:
+                                    payment_method_totals[normalized_method]['amount_tl'] += abs(amount)
+                            # Also track USD for BANK/CC (gross amount)
+                            payment_method_totals[normalized_method]['amount_usd'] += abs(amount)
+                        else:
+                            # TL/TRY transaction - use GROSS amount directly (or amount_try if set)
+                            if amount_try is not None:
+                                payment_method_totals[normalized_method]['amount_tl'] += abs(amount_try)
+                            else:
+                                payment_method_totals[normalized_method]['amount_tl'] += abs(amount)
+                            # Convert to USD for tracking
+                            if usd_rate and usd_rate != Decimal('0'):
+                                if amount_try is not None:
+                                    payment_method_totals[normalized_method]['amount_usd'] += abs(decimal_float_service.safe_divide(amount_try, usd_rate, 'decimal'))
+                                else:
+                                    payment_method_totals[normalized_method]['amount_usd'] += abs(decimal_float_service.safe_divide(amount, usd_rate, 'decimal'))
+                            else:
+                                payment_method_totals[normalized_method]['amount_usd'] += abs(amount)
+                    
+                    payment_method_totals[normalized_method]['count'] += 1
+            
             # DEBUG: Log final results for September 30th
             if date_str == '2025-09-30':
                 print(f"  Calculated USD Gross: {gross_balance_usd}")
@@ -2003,7 +2362,24 @@ def api_summary_batch():
                 'gross_balance_usd': float(gross_balance_usd),
                 'total_net_tl': float(total_net_tl),
                 'total_net_usd': float(total_net_usd),
-                'exchange_rate': float(usd_rate) if usd_rate else None
+                'exchange_rate': float(usd_rate) if usd_rate else None,
+                'payment_method_totals': {
+                    'BANK': {
+                        'amount_tl': float(payment_method_totals['BANK']['amount_tl']),
+                        'amount_usd': float(payment_method_totals['BANK']['amount_usd']),
+                        'count': payment_method_totals['BANK']['count']
+                    },
+                    'CC': {
+                        'amount_tl': float(payment_method_totals['CC']['amount_tl']),
+                        'amount_usd': float(payment_method_totals['CC']['amount_usd']),
+                        'count': payment_method_totals['CC']['count']
+                    },
+                    'TETHER': {
+                        'amount_tl': float(payment_method_totals['TETHER']['amount_tl']),
+                        'amount_usd': float(payment_method_totals['TETHER']['amount_usd']),
+                        'count': payment_method_totals['TETHER']['count']
+                    }
+                }
             }
         
         return jsonify({

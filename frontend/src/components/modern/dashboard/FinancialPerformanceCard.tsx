@@ -28,6 +28,7 @@ interface FinancialPerformanceCardProps {
   onToday?: () => void;
   formatDate: (date: Date) => string;
   navigatePath: string;
+  showWithCommission?: boolean; // Toggle to show net cash with/without commission
 }
 
 export const FinancialPerformanceCard: React.FC<FinancialPerformanceCardProps> = ({
@@ -44,6 +45,7 @@ export const FinancialPerformanceCard: React.FC<FinancialPerformanceCardProps> =
   onToday,
   formatDate,
   navigatePath,
+  showWithCommission = false,
 }) => {
   const navigate = useNavigate();
   const { t } = useLanguage();
@@ -216,25 +218,42 @@ export const FinancialPerformanceCard: React.FC<FinancialPerformanceCardProps> =
                 </div>
 
                 {/* Net Cash */}
-                <div className={`flex items-center justify-between py-3 px-4 rounded border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 group ${
-                  (data.net_cash_tl || 0) >= 0 ? 'bg-green-50' : 'bg-red-50'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <DollarSign className={`w-4 h-4 group-hover:scale-110 transition-transform duration-200 ${
-                      (data.net_cash_tl || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`} />
-                    <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors duration-200">
-                      Net Cash
-                    </span>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-semibold group-hover:text-gray-950 transition-colors duration-200 ${
-                      (data.net_cash_tl || 0) >= 0 ? 'text-green-700' : 'text-red-700'
+                {(() => {
+                  // Calculate net cash with/without commission
+                  const netCashTl = data.net_cash_tl || 0;
+                  // Try to get commission from data, fallback to 0 if not available
+                  const commissionsTl = (data as any).total_commission_tl || (data as any).total_commission || 0;
+                  const netCashAfterCommissionTl = netCashTl - commissionsTl;
+                  const displayNetCash = showWithCommission ? netCashAfterCommissionTl : netCashTl;
+                  const isPositive = displayNetCash >= 0;
+                  
+                  return (
+                    <div className={`flex items-center justify-between py-3 px-4 rounded border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-200 group ${
+                      isPositive ? 'bg-green-50' : 'bg-red-50'
                     }`}>
-                      ₺{Math.abs(data.net_cash_tl || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                      <div className="flex items-center gap-3">
+                        <DollarSign className={`w-4 h-4 group-hover:scale-110 transition-transform duration-200 ${
+                          isPositive ? 'text-green-600' : 'text-red-600'
+                        }`} />
+                        <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors duration-200">
+                          {showWithCommission ? 'Net Cash (After Commission)' : 'Net Cash'}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-sm font-semibold group-hover:text-gray-950 transition-colors duration-200 ${
+                          isPositive ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          ₺{Math.abs(displayNetCash).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                        </div>
+                        {showWithCommission && commissionsTl > 0 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            Commissions: -₺{commissionsTl.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             </div>
 

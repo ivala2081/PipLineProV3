@@ -33,8 +33,13 @@ class User(UserMixin, db.Model):
     password_changed_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     email = db.Column(db.String(120), unique=True, nullable=True)
     
+    # Multi-tenancy: Organization relationship
+    # nullable=True for backwards compatibility - existing users will have NULL initially
+    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    
     # Relationships
     created_admins = db.relationship('User', backref=db.backref('creator', remote_side=[id]))
+    organization = db.relationship('Organization', backref=db.backref('users', lazy=True))
     
     # Add cascade delete relationships for related models
     # These will be defined in the respective models, but we can add them here for clarity
@@ -51,9 +56,11 @@ class User(UserMixin, db.Model):
         db.Index('idx_user_role', 'role'),
         db.Index('idx_user_is_active', 'is_active'),
         db.Index('idx_user_admin_level', 'admin_level'),
+        db.Index('idx_user_organization', 'organization_id'),
         # Composite indexes for common query patterns
         db.Index('idx_user_active_admin', 'is_active', 'admin_level'),
         db.Index('idx_user_role_active', 'role', 'is_active'),
+        db.Index('idx_user_org_active', 'organization_id', 'is_active'),
     )
     
     @validates('username')
@@ -196,6 +203,8 @@ class User(UserMixin, db.Model):
             'admin_title': self.get_admin_title(),
             'is_active': self.is_active,
             'email': self.email,
+            'organization_id': self.organization_id,
+            'organization_name': self.organization.name if self.organization else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None,
             'failed_login_attempts': self.failed_login_attempts,

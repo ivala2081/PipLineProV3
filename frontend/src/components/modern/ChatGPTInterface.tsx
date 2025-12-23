@@ -417,7 +417,7 @@ const ChatGPTInterface: React.FC<ChatGPTInterfaceProps> = ({ apiKey, className =
               disabled={!inputMessage.trim() || isLoading || !isConfigured}
               className={`px-4 py-2 rounded-lg transition-all duration-200 ${
                 isConfigured
-                  ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                  ? "bg-gray-700 hover:bg-gray-800 text-white"
                   : "bg-amber-100 text-amber-600 cursor-not-allowed"
               }`}
             >

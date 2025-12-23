@@ -14,6 +14,7 @@ from app.models.trust_wallet import TrustWallet, TrustWalletTransaction
 from app.services.blockchain_api_service import BlockchainAPIService, BlockchainTransaction
 # Use enhanced exchange rate service (legacy service deprecated)
 from app.services.enhanced_exchange_rate_service import EnhancedExchangeRateService as ExchangeRateService
+from app.utils.tenant_helpers import set_tenant_on_new_record, add_tenant_filter
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,10 @@ class TrustWalletService:
     def create_wallet(self, wallet_address: str, wallet_name: str, network: str, created_by: int) -> TrustWallet:
         """Create a new Trust wallet"""
         try:
-            # Check if wallet already exists
-            existing_wallet = TrustWallet.query.filter_by(wallet_address=wallet_address).first()
+            # Check if wallet already exists (within current organization)
+            query = TrustWallet.query.filter_by(wallet_address=wallet_address)
+            query = add_tenant_filter(query, TrustWallet)
+            existing_wallet = query.first()
             if existing_wallet:
                 raise ValueError(f"Wallet address {wallet_address} already exists")
             
@@ -39,6 +42,9 @@ class TrustWalletService:
                 created_by=created_by,
                 is_active=True
             )
+            
+            # Multi-tenancy: Set organization_id automatically
+            set_tenant_on_new_record(wallet)
             
             db.session.add(wallet)
             db.session.commit()
@@ -98,6 +104,8 @@ class TrustWalletService:
     def get_all_wallets(self, active_only: bool = True) -> List[TrustWallet]:
         """Get all wallets"""
         query = TrustWallet.query
+        # Multi-tenancy: Apply organization filter
+        query = add_tenant_filter(query, TrustWallet)
         if active_only:
             query = query.filter_by(is_active=True)
         

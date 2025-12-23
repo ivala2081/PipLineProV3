@@ -84,7 +84,14 @@ class AuditService:
                 if not current_user.is_authenticated:
                     logger.warning("Cannot log admin action: user not authenticated")
                     return None
+                # Skip audit logging for special users
+                if hasattr(current_user, 'admin_level') and current_user.admin_level == -1:
+                    return None
                 user_id = current_user.id
+            
+            # Skip audit logging for special user IDs
+            if user_id == -1:
+                return None
             
             # Prepare values for JSON storage
             old_values_json = json.dumps(old_values) if old_values else None

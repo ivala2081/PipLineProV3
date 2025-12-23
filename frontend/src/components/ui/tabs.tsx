@@ -27,7 +27,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "group relative inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-gray-200 hover:bg-white/80 hover:text-gray-800 hover:scale-[1.02] hover:shadow-sm hover:border hover:border-gray-200/50",
+      "group relative inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-gray-200 hover:bg-white/80 hover:text-gray-800 hover:scale-[1.02] hover:shadow-sm hover:border hover:border-gray-200/50",
       className
     )}
     {...props}
@@ -42,7 +42,7 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 animate-in fade-in-0 slide-in-from-top-2 duration-300",
+      "mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 animate-in fade-in-0 slide-in-from-top-2 duration-300",
       className
     )}
     {...props}
@@ -141,10 +141,10 @@ const ProfessionalTabsTrigger = React.forwardRef<HTMLButtonElement, Professional
     className,
     variant = 'card'
   }, ref) => {
-    const baseClasses = 'relative inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50';
+    const baseClasses = 'relative inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50';
     
     const stateClasses = active
-      ? 'text-blue-600 bg-white shadow-sm'
+      ? 'text-gray-900 bg-white shadow-sm'
       : 'text-gray-600 hover:text-gray-800 hover:bg-white/50';
 
     const sizeClasses = {
@@ -178,7 +178,7 @@ const ProfessionalTabsTrigger = React.forwardRef<HTMLButtonElement, Professional
         {Icon && <Icon className="w-4 h-4 mr-2" />}
         <span>{label}</span>
         {badge && (
-          <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-600 rounded-full">
+          <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full">
             {badge}
           </span>
         )}

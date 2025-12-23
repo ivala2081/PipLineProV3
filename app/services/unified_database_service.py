@@ -336,11 +336,29 @@ class UnifiedDatabaseService:
         try:
             stats = {}
             
+            # Get connection pool statistics
+            try:
+                pool = db.engine.pool
+                stats['connection_pool'] = {
+                    'size': pool.size(),
+                    'checked_out': pool.checkedout(),
+                    'checked_in': pool.checkedin(),
+                    'overflow': pool.overflow(),
+                }
+            except Exception as e:
+                logger.debug(f"Could not get connection pool stats: {e}")
+                stats['connection_pool'] = {
+                    'size': 0,
+                    'checked_out': 0,
+                    'checked_in': 0,
+                    'overflow': 0,
+                }
+            
             # Get table row counts
             tables = ['transaction', 'user', 'psp_track', 'daily_balance', 'psp_allocation', 'audit_log']
             for table in tables:
                 try:
-                    result = db.session.execute(text(f"SELECT COUNT(*) FROM {table}")).fetchone()
+                    result = db.session.execute(text(f'SELECT COUNT(*) FROM "{table}"')).fetchone()
                     stats[f"{table}_count"] = result[0] if result else 0
                 except Exception as e:
                     stats[f"{table}_count"] = 0

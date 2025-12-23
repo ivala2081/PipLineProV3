@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 /**
@@ -32,6 +32,24 @@ export function useTabPersistence<T extends string>(
   };
   
   const [activeTab, setActiveTab] = useState<T>(getInitialTab());
+  const activeTabRef = useRef<T>(getInitialTab());
+  
+  // Update ref when activeTab changes
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+  
+  // Sync tab state with URL changes (for navigation from other pages)
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') as T;
+    // Only update if URL has a tab param and it's different from current state
+    if (tabFromUrl && tabFromUrl !== activeTabRef.current) {
+      setActiveTab(tabFromUrl);
+      activeTabRef.current = tabFromUrl;
+    }
+    // Note: We don't reset to default when URL has no tab param
+    // because that would interfere with user's manual tab changes
+  }, [searchParams]); // Only depend on searchParams to avoid loops
   
   // Handle tab change with URL persistence
   const handleTabChange = useCallback((value: string) => {

@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from app import db, csrf
 from app.models.trust_wallet import TrustWallet, TrustWalletTransaction
 from app.services.trust_wallet_service import TrustWalletService
+from app.utils.tenant_helpers import set_tenant_on_new_record, add_tenant_filter, validate_tenant_access
 
 logger = logging.getLogger(__name__)
 

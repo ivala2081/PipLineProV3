@@ -39,6 +39,19 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
+  const debugNavClick = (meta: Record<string, unknown>) => {
+    // Temporary debugging for sidebar navigation issues
+    // eslint-disable-next-line no-console
+    console.log('[nav-click]', {
+      variant,
+      currentPath: window.location.pathname,
+      currentSearch: window.location.search,
+      mobileMenuOpen: state.mobileMenuOpen,
+      sidebarOpen: state.sidebarOpen,
+      ...meta
+    });
+  };
+
   // Update time every second
   useEffect(() => {
     const timer = setInterval(() => {
@@ -64,6 +77,14 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
 
   const handleItemClick = (item: any) => {
     if (item.children) {
+      debugNavClick({
+        type: 'main',
+        action: 'toggle-expand',
+        itemId: item.id,
+        itemName: item.name,
+        itemHref: item.href,
+        isActive: isActive(item.href),
+      });
       // Toggle expansion for items with children
       const newExpanded = new Set(expandedItems);
       if (newExpanded.has(item.id)) {
@@ -73,6 +94,14 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
       }
       setExpandedItems(newExpanded);
     } else {
+      debugNavClick({
+        type: 'main',
+        action: 'navigate',
+        itemId: item.id,
+        itemName: item.name,
+        itemHref: item.href,
+        isActive: isActive(item.href),
+      });
       // Navigate to the path
       navigateTo(item.href);
     }
@@ -88,10 +117,21 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
 
   // Desktop Sidebar
   if (variant === 'sidebar') {
+    // #region agent log (dev only)
+    React.useEffect(() => {
+      if (!import.meta.env.DEV) return;
+      const navItems = document.querySelectorAll('[class*="nav"] button, [class*="nav"] a');
+      navItems.forEach((item, idx) => {
+        const computed = getComputedStyle(item as HTMLElement);
+        fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'UnifiedNavigation.tsx:91',message:'Navigation item styles',data:{index:idx,bgColor:computed.backgroundColor,color:computed.color,hasBlue:computed.backgroundColor.includes('blue')||computed.color.includes('blue'),hasGradient:computed.backgroundImage&&computed.backgroundImage!=='none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,E'})}).catch(()=>{});
+      });
+    }, []);
+    // #endregion
+    
     return (
       <div className={clsx('flex flex-col h-full bg-white border-r border-gray-200', className)}>
         {/* Logo Section */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-gray-200 min-h-[88px] flex items-center">
           <div className="flex items-center gap-3">
             <img 
               src="/plogo.png" 
@@ -118,11 +158,11 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
                 <button
                   onClick={() => handleItemClick(item)}
                   className={clsx(
-                    'w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                    'group w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                     item.special
                       ? active
-                        ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-lg'
-                        : 'text-purple-600 hover:bg-purple-50 hover:text-purple-700'
+                        ? 'bg-gray-700 text-white shadow-lg'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-700'
                       : active
                       ? 'bg-gray-100 text-gray-900'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -138,7 +178,7 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
                       <Badge 
                         variant={item.special ? 'default' : 'secondary'}
                         className={clsx(
-                          'text-xs',
+                          'text-xs opacity-0 transition-opacity duration-150 group-hover:opacity-100',
                           item.special && 'bg-white/20 text-white'
                         )}
                       >
@@ -160,21 +200,31 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
                 {hasChildren && isExpanded && (
                   <div className="ml-8 mt-2 space-y-1">
                     {item.children!.map((child) => {
-                      const ChildIcon = child.icon;
                       const childActive = isActive(child.href);
                       
                       return (
                         <button
                           key={child.id}
-                          onClick={() => navigateTo(child.href)}
+                          onClick={() => {
+                            debugNavClick({
+                              type: 'child',
+                              action: 'navigate',
+                              parentId: item.id,
+                              parentName: item.name,
+                              childId: child.id,
+                              childName: child.name,
+                              childHref: child.href,
+                              isActive: childActive,
+                            });
+                            navigateTo(child.href);
+                          }}
                           className={clsx(
-                            'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                            'w-full flex items-center px-3 py-2 rounded-lg text-sm transition-colors',
                             childActive
                               ? 'bg-gray-100 text-gray-900'
                               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                           )}
                         >
-                          <ChildIcon className="w-4 h-4" />
                           <span>{child.name}</span>
                         </button>
                       );
@@ -263,8 +313,8 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
                   'flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-200 min-w-[60px] min-h-[60px] relative',
                   item.special
                     ? active
-                      ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
-                      : 'text-purple-600'
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-600'
                     : active
                     ? 'text-gray-900 bg-gray-100'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -316,9 +366,12 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
           })}
           
           {/* Quick Actions Button */}
-          <button className="flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-200 min-w-[60px] min-h-[60px] text-gray-600 hover:text-gray-900 hover:bg-gray-50">
+          <button 
+            className="flex flex-col items-center justify-center p-2 rounded-lg transition-all duration-200 min-w-[60px] min-h-[60px] text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+            aria-label="More actions"
+          >
             <div className="relative">
-              <Activity className="h-5 w-5 transition-transform duration-200 hover:scale-105" />
+              <Activity className="h-5 w-5 transition-transform duration-200 hover:scale-105" aria-hidden="true" />
             </div>
             <span className="text-xs font-medium mt-1 text-center">
               More
@@ -370,11 +423,11 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
                 <button
                   onClick={() => handleItemClick(item)}
                   className={clsx(
-                    'w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200',
+                    'group w-full flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200',
                     item.special
                       ? active
-                        ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white'
-                        : 'text-purple-600 hover:bg-purple-50'
+                        ? 'bg-gray-700 text-white'
+                        : 'text-gray-600 hover:bg-gray-50'
                       : active
                       ? 'bg-gray-100 text-gray-900'
                       : 'text-gray-600 hover:bg-gray-50'
@@ -384,7 +437,10 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
                     <Icon className="w-5 h-5" />
                     <span>{item.name}</span>
                     {item.badge && (
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge
+                        variant="secondary"
+                        className="text-xs opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                      >
                         {item.badge}
                       </Badge>
                     )}
@@ -403,21 +459,31 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
                 {hasChildren && isExpanded && (
                   <div className="ml-8 mt-2 space-y-1">
                     {item.children!.map((child) => {
-                      const ChildIcon = child.icon;
                       const childActive = isActive(child.href);
                       
                       return (
                         <button
                           key={child.id}
-                          onClick={() => navigateTo(child.href)}
+                          onClick={() => {
+                            debugNavClick({
+                              type: 'child',
+                              action: 'navigate',
+                              parentId: item.id,
+                              parentName: item.name,
+                              childId: child.id,
+                              childName: child.name,
+                              childHref: child.href,
+                              isActive: childActive,
+                            });
+                            navigateTo(child.href);
+                          }}
                           className={clsx(
-                            'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                            'w-full flex items-center px-3 py-2 rounded-lg text-sm transition-colors',
                             childActive
                               ? 'bg-gray-100 text-gray-900'
                               : 'text-gray-600 hover:bg-gray-50'
                           )}
                         >
-                          <ChildIcon className="w-4 h-4" />
                           <span>{child.name}</span>
                         </button>
                       );

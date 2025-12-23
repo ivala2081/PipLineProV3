@@ -8,9 +8,9 @@ services:
     container_name: pipeline-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-pipeline_treasury}
-      POSTGRES_USER: ${POSTGRES_USER:-pipeline}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -29,7 +29,7 @@ services:
     image: redis:7-alpine
     container_name: pipeline-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme123}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -50,26 +50,27 @@ services:
     container_name: pipeline-app
     restart: unless-stopped
     environment:
-      # Database
-      DATABASE_URL: postgresql://${POSTGRES_USER:-pipeline}:${POSTGRES_PASSWORD:-changeme123}@postgres:5432/${POSTGRES_DB:-pipeline_treasury}
+      # Database - REQUIRED: Set POSTGRES_* environment variables
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-pipeline_treasury}
-      POSTGRES_USER: ${POSTGRES_USER:-pipeline}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       
-      # Redis
-      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme123}@redis:6379/0
+      # Redis - REQUIRED: Set REDIS_PASSWORD environment variable
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme123}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_ENABLED: "true"
       
       # Flask
       FLASK_APP: app.py
-      FLASK_ENV: ${FLASK_ENV:-production}
-      SECRET_KEY: ${SECRET_KEY:-change-this-secret-key-in-production}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-jwt-secret-key}
+      FLASK_ENV: ${FLASK_ENV}
+      # SECURITY: SECRET_KEY and JWT_SECRET_KEY MUST be set via environment variables
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       
       # Application
       PORT: 5000

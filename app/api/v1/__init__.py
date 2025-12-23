@@ -2,12 +2,13 @@
 API v1 Blueprint Registration
 """
 from flask import Blueprint
-from app.api.v1.endpoints import transactions, analytics, users, health, translations, exchange_rates, currency_management, database, performance, bulk_rates, docs, realtime_analytics, ai_analysis, financial_performance, ai_assistant, database_management, security, trust_wallet, accounting, config, monitoring, metrics
+from app.api.v1.endpoints import transactions, analytics, users, health, translations, exchange_rates, currency_management, database, performance, bulk_rates, docs, realtime_analytics, ai_analysis, financial_performance, ai_assistant, database_management, security, trust_wallet, accounting, config, monitoring, metrics, organizations
 
 # Create the main API v1 blueprint
 api_v1 = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 
 # Register endpoint blueprints
+api_v1.register_blueprint(organizations.organizations_api, url_prefix='/organizations')  # Multi-tenancy
 api_v1.register_blueprint(transactions.transactions_api, url_prefix='/transactions')
 api_v1.register_blueprint(analytics.analytics_api, url_prefix='/analytics')
 api_v1.register_blueprint(users.users_api, url_prefix='/users')

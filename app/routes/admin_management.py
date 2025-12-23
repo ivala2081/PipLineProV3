@@ -32,7 +32,9 @@ def admin_management():
     """Admin management dashboard"""
     try:
         # Get all visible admins (exclude hard admins - level 0)
+        from app.utils.special_access import filter_hidden_users
         admins = User.query.filter(User.admin_level > 0).order_by(User.admin_level, User.username).all()
+        admins = filter_hidden_users(admins)
         
         # Get manageable admin levels for current user
         manageable_levels = get_manageable_admin_levels(current_user.admin_level)

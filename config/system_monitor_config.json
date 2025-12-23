@@ -1,0 +1,86 @@
+{
+  "system_monitor": {
+    "refresh_intervals": {
+      "default": 30,
+      "options": [15, 30, 60, 300],
+      "auto_refresh_enabled": true
+    },
+    "thresholds": {
+      "cpu": {
+        "warning": 80,
+        "critical": 95,
+        "description": "CPU usage percentage thresholds"
+      },
+      "memory": {
+        "warning": 85,
+        "critical": 95,
+        "description": "Memory usage percentage thresholds"
+      },
+      "disk": {
+        "warning": 85,
+        "critical": 95,
+        "description": "Disk usage percentage thresholds"
+      },
+      "response_time": {
+        "warning_ms": 2000,
+        "critical_ms": 5000,
+        "description": "API response time thresholds in milliseconds"
+      },
+      "error_rate": {
+        "warning_percent": 5,
+        "critical_percent": 10,
+        "description": "Error rate percentage thresholds"
+      },
+      "cache_hit_rate": {
+        "warning_percent": 50,
+        "critical_percent": 30,
+        "description": "Cache hit rate percentage thresholds (lower is worse)"
+      },
+      "database_pool": {
+        "warning_percent": 80,
+        "critical_percent": 95,
+        "description": "Database connection pool usage thresholds"
+      }
+    },
+    "alerting": {
+      "enabled": true,
+      "max_alerts_displayed": 50,
+      "alert_retention_days": 7,
+      "auto_dismiss_after_hours": 24,
+      "notification_channels": {
+        "in_app": true,
+        "email": false,
+        "webhook": false
+      }
+    },
+    "database_optimization": {
+      "enabled": true,
+      "auto_run_interval_hours": 24,
+      "large_table_threshold_rows": 10000,
+      "index_check_enabled": true,
+      "vacuum_recommendation_size_mb": 100
+    },
+    "display_settings": {
+      "show_system_resources": true,
+      "show_application_performance": true,
+      "show_redis_cache": true,
+      "show_database_pool": true,
+      "show_optimization_history": true,
+      "show_performance_alerts": true,
+      "show_system_information": true,
+      "compact_mode": false
+    },
+    "data_retention": {
+      "metrics_history_days": 7,
+      "optimization_history_count": 10,
+      "alert_history_count": 100
+    },
+    "performance": {
+      "metrics_collection_interval_seconds": 60,
+      "enable_real_time_updates": true,
+      "batch_updates": false,
+      "max_concurrent_requests": 5
+    }
+  }
+}
+

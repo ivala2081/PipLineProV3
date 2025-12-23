@@ -18,11 +18,11 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm hover:shadow-md",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        gradient: "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-sm hover:shadow-lg hover:scale-105 transition-all duration-200",
+        gradient: "bg-gray-700 text-white hover:bg-gray-800 shadow-sm hover:shadow-md transition-all duration-200",
         success: "bg-green-600 text-white hover:bg-green-700 shadow-sm hover:shadow-md",
         warning: "bg-yellow-600 text-white hover:bg-yellow-700 shadow-sm hover:shadow-md",
         info: "bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md",
-        enterprise: "bg-gradient-to-r from-slate-700 to-slate-800 text-white hover:from-slate-800 hover:to-slate-900 shadow-sm hover:shadow-md",
+        enterprise: "bg-gray-800 text-white hover:bg-gray-900 shadow-sm hover:shadow-md",
       },
       size: {
         default: "h-10 px-4 py-2",
@@ -50,9 +50,20 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    
+    // #region agent log
+    React.useEffect(() => {
+      if (!import.meta.env.DEV) return;
+      if (variant) {
+        const hasBlue = variant === 'default' || variant === 'info' || variant === 'link';
+        fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'button.tsx:51',message:'Button variant used',data:{variant,size,hasBlueColor:hasBlue,usesPrimary:variant==='default'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      }
+    }, [variant, size]);
+    // #endregion
+    
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(buttonVariants({ variant, size }), className)}
         ref={ref}
         {...props}
       />

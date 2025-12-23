@@ -72,7 +72,7 @@ const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Transactions</p>
+                <p className="text-sm font-medium text-gray-600">{t('trust_wallet.total_transactions')}</p>
                 <p className="text-2xl font-bold text-gray-900">0</p>
               </div>
               <Activity className="h-8 w-8 text-green-600" />
@@ -83,7 +83,7 @@ const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Value (TRY)</p>
+                <p className="text-sm font-medium text-gray-600">{t('trust_wallet.total_value_try')}</p>
                 <p className="text-2xl font-bold text-gray-900">₺0</p>
               </div>
               <DollarSign className="h-8 w-8 text-yellow-600" />
@@ -94,7 +94,7 @@ const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Active Networks</p>
+                <p className="text-sm font-medium text-gray-600">{t('trust_wallet.active_networks')}</p>
                 <p className="text-2xl font-bold text-gray-900">0</p>
               </div>
               <Shield className="h-8 w-8 text-purple-600" />
@@ -199,25 +199,25 @@ const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Activity className="h-5 w-5 text-blue-600" />
-            Recent Activity (Last 24 Hours)
+            {t('trust_wallet.recent_activity_24h')}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-600">Transactions</p>
+              <p className="text-sm font-medium text-gray-600">{t('trust_wallet.transactions')}</p>
               <p className="text-2xl font-bold text-gray-900">
                 {formatNumber(summary.recent_activity.last_24h_transactions)}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-600">Volume (TRY)</p>
+              <p className="text-sm font-medium text-gray-600">{t('trust_wallet.volume_try', 'Volume (TRY)')}</p>
               <p className="text-2xl font-bold text-gray-900">
                 {formatCurrency(summary.recent_activity.last_24h_amount_try)}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-600">Growth</p>
+              <p className="text-sm font-medium text-gray-600">{t('trust_wallet.growth', 'Growth')}</p>
               <div className="flex items-center justify-center gap-1">
                 {getGrowthIcon(summary.recent_activity.growth_percentage)}
                 <p className={`text-2xl font-bold ${getGrowthColor(summary.recent_activity.growth_percentage)}`}>
@@ -236,7 +236,7 @@ const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-purple-600" />
-              Network Breakdown
+              {t('trust_wallet.network_breakdown')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -252,10 +252,10 @@ const WalletSummaryCards: React.FC<WalletSummaryCardsProps> = ({
                     <span className="font-semibold text-gray-900">{network.network}</span>
                   </div>
                   <p className="text-sm text-gray-600 mb-1">
-                    {formatNumber(network.wallet_count)} wallets
+                    {formatNumber(network.wallet_count)} {t('trust_wallet.wallets')}
                   </p>
                   <p className="text-sm text-gray-600 mb-1">
-                    {formatNumber(network.transaction_count)} transactions
+                    {formatNumber(network.transaction_count)} {t('trust_wallet.transactions')}
                   </p>
                   <p className="text-lg font-bold text-gray-900">
                     {formatCurrency(network.total_amount_try)}

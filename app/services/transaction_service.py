@@ -246,15 +246,21 @@ class TransactionService:
             if not transaction:
                 raise ValueError('Transaction not found')
             
-            # Store date and PSP for balance update
+            # Store date and PSP for balance update (handle None PSP)
             date_obj = transaction.date
-            psp = transaction.psp
+            psp = transaction.psp if transaction.psp else ''
+            
+            logger.info(f"Deleting transaction {transaction_id} - Date: {date_obj}, PSP: {psp or 'N/A'}")
             
             db.session.delete(transaction)
             db.session.commit()
             
-            # Update daily balance
-            TransactionService.update_daily_balance(date_obj, psp)
+            # Update daily balance (this may fail but shouldn't prevent deletion)
+            try:
+                TransactionService.update_daily_balance(date_obj, psp)
+            except Exception as balance_error:
+                logger.warning(f'Failed to update daily balance after deletion: {balance_error}')
+                # Don't raise - deletion was successful, balance update is secondary
             
             # Sync PSP Track if available
             if SYNC_AVAILABLE:
@@ -274,7 +280,7 @@ class TransactionService:
             return True
             
         except Exception as e:
-            logger.error(f'Error deleting transaction: {e}')
+            logger.error(f'Error deleting transaction {transaction_id}: {e}', exc_info=True)
             db.session.rollback()
             raise
 
@@ -331,8 +337,24 @@ class TransactionService:
     def update_daily_balance(date_obj, psp):
         """Update daily balance for a specific date and PSP"""
         try:
+            # Handle None or empty PSP values
+            if psp is None:
+                psp = ''
+            
+            # Normalize PSP to string
+            psp = str(psp) if psp else ''
+            
             # Get all transactions for the date and PSP
-            transactions = Transaction.query.filter_by(date=date_obj, psp=psp).all()
+            # Use filter with proper None handling
+            if psp:
+                transactions = Transaction.query.filter_by(date=date_obj, psp=psp).all()
+            else:
+                # Handle None/empty PSP - filter for transactions where PSP is None or empty
+                from sqlalchemy import or_
+                transactions = Transaction.query.filter(
+                    Transaction.date == date_obj,
+                    or_(Transaction.psp.is_(None), Transaction.psp == '')
+                ).all()
             
             # Calculate totals
             total_inflow = sum(t.amount for t in transactions if t.category == 'DEP')
@@ -341,7 +363,11 @@ class TransactionService:
             net_amount = total_inflow - total_outflow - total_commission
             
             # Update or create daily balance
-            daily_balance = DailyBalance.query.filter_by(date=date_obj, psp=psp).first()
+            if psp:
+                daily_balance = DailyBalance.query.filter_by(date=date_obj, psp=psp).first()
+            else:
+                daily_balance = DailyBalance.query.filter_by(date=date_obj, psp='').first()
+            
             if daily_balance:
                 daily_balance.total_inflow = total_inflow
                 daily_balance.total_outflow = total_outflow
@@ -351,7 +377,7 @@ class TransactionService:
             else:
                 daily_balance = DailyBalance(
                     date=date_obj,
-                    psp=psp,
+                    psp=psp or '',  # Ensure PSP is not None
                     total_inflow=total_inflow,
                     total_outflow=total_outflow,
                     total_commission=total_commission,
@@ -360,10 +386,10 @@ class TransactionService:
                 db.session.add(daily_balance)
             
             db.session.commit()
-            logger.info(f"Updated daily balance for {date_obj} - PSP: {psp}, Net: {net_amount}")
+            logger.info(f"Updated daily balance for {date_obj} - PSP: {psp or 'N/A'}, Net: {net_amount}")
             
         except Exception as e:
-            logger.error(f'Error updating daily balance: {e}')
+            logger.error(f'Error updating daily balance: {e}', exc_info=True)
             db.session.rollback()
 
     @staticmethod

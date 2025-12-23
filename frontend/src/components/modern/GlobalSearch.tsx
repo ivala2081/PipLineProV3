@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -13,6 +14,8 @@ import {
   Clock,
   ArrowRight
 } from 'lucide-react';
+import { api } from '../../utils/apiClient';
+import { formatCurrency } from '../../utils/currencyUtils';
 
 interface SearchResult {
   id: string;
@@ -22,6 +25,7 @@ interface SearchResult {
   value?: string;
   date?: string;
   status?: string;
+  clientData?: any;
 }
 
 interface GlobalSearchProps {
@@ -29,73 +33,75 @@ interface GlobalSearchProps {
 }
 
 export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onResultClick }) => {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Mock search data
-  const mockData: SearchResult[] = [
-    {
-      id: '1',
-      type: 'transaction',
-      title: 'TXN-001 - Acme Corp',
-      description: 'Payment processing transaction',
-      value: '$12,500',
-      date: '2024-01-15',
-      status: 'completed'
-    },
-    {
-      id: '2',
-      type: 'client',
-      title: 'Acme Corporation',
-      description: 'Enterprise client with 45 transactions',
-      value: '$125,000',
-      date: '2024-01-10'
-    },
-    {
-      id: '3',
-      type: 'transaction',
-      title: 'TXN-002 - Tech Solutions',
-      description: 'Monthly subscription payment',
-      value: '$8,500',
-      date: '2024-01-14',
-      status: 'pending'
-    },
-    {
-      id: '4',
-      type: 'client',
-      title: 'Tech Solutions Inc',
-      description: 'SME client with 12 transactions',
-      value: '$45,000',
-      date: '2024-01-08'
-    },
-    {
-      id: '5',
-      type: 'report',
-      title: 'Monthly Revenue Report',
-      description: 'January 2024 revenue analysis',
-      value: '$456,730',
-      date: '2024-01-01'
+  const searchClients = useCallback(async (term: string) => {
+    if (term.length < 2) {
+      setResults([]);
+      return;
     }
-  ];
+
+    setLoading(true);
+    try {
+      const response = await api.get(`/transactions/search-clients?q=${encodeURIComponent(term)}`);
+      if (response.ok) {
+        const data = await api.parseResponse(response);
+        
+        const searchResults: SearchResult[] = [];
+        
+        // Add client results
+        if (data.clients && Array.isArray(data.clients)) {
+          data.clients.forEach((client: any) => {
+            searchResults.push({
+              id: `client-${client.client_name}`,
+              type: 'client',
+              title: client.client_name,
+              description: `${client.transaction_count} transaction${client.transaction_count !== 1 ? 's' : ''} • Total: ${formatCurrency(client.total_amount, 'TRY')}`,
+              value: formatCurrency(client.total_amount, 'TRY'),
+              date: client.last_transaction || client.first_transaction,
+              clientData: client
+            });
+          });
+        }
+        
+        // Add recent transactions
+        if (data.transactions && Array.isArray(data.transactions)) {
+          data.transactions.slice(0, 5).forEach((tx: any) => {
+            searchResults.push({
+              id: `tx-${tx.id}`,
+              type: 'transaction',
+              title: `${tx.client_name} - ${tx.category || 'Transaction'}`,
+              description: `${tx.payment_method || ''} • ${tx.psp || ''}`,
+              value: formatCurrency(tx.amount, tx.currency || 'TRY'),
+              date: tx.date,
+              status: 'completed'
+            });
+          });
+        }
+        
+        setResults(searchResults);
+      } else {
+        setResults([]);
+      }
+    } catch (error) {
+      console.error('Error searching clients:', error);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (searchTerm.length > 2) {
-      setLoading(true);
-      // Simulate search delay
-      setTimeout(() => {
-        const filtered = mockData.filter(item =>
-          item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.description.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-        setResults(filtered);
-        setLoading(false);
-      }, 300);
-    } else {
-      setResults([]);
-    }
-  }, [searchTerm]);
+    const timeoutId = setTimeout(() => {
+      searchClients(searchTerm);
+    }, 300); // Debounce search
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, searchClients]);
 
   // Close search dropdown when clicking outside
   useEffect(() => {
@@ -138,6 +144,15 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onResultClick }) => 
   };
 
   const handleResultClick = (result: SearchResult) => {
+    if (result.type === 'client' && result.clientData) {
+      // Navigate to dedicated client detail page
+      navigate(`/clients/${encodeURIComponent(result.clientData.client_name)}`);
+    } else if (result.type === 'transaction') {
+      // Navigate to client detail page for the transaction's client
+      const clientName = result.title.split(' - ')[0];
+      navigate(`/clients/${encodeURIComponent(clientName)}`);
+    }
+    
     onResultClick?.(result);
     setIsOpen(false);
     setSearchTerm('');
@@ -203,7 +218,23 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onResultClick }) => 
                       <p className="text-xs text-muted-foreground mb-1">
                         {result.description}
                       </p>
-                      <div className="flex items-center gap-2">
+                      {result.type === 'client' && result.clientData && (
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                          {result.clientData.transaction_count > 0 && (
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              {result.clientData.transaction_count} transactions
+                            </span>
+                          )}
+                          {result.clientData.total_commission > 0 && (
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="w-3 h-3" />
+                              Commission: {formatCurrency(result.clientData.total_commission, 'TRY')}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
                         {result.date && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock className="w-3 h-3" />
@@ -213,7 +244,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ onResultClick }) => 
                         {getStatusBadge(result.status)}
                       </div>
                     </div>
-                    <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                    <ArrowRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                   </div>
                 ))}
               </div>

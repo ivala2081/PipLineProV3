@@ -487,6 +487,7 @@ export default function Agents() {
                       size="sm"
                       onClick={resetFilters}
                       className="flex items-center gap-2"
+                      aria-label="Reset filters"
                     >
                       Reset
                     </Button>
@@ -495,9 +496,11 @@ export default function Agents() {
                       size="sm"
                       onClick={() => setShowFilters(!showFilters)}
                       className="flex items-center gap-2"
+                      aria-label={showFilters ? 'Hide filters' : 'Show filters'}
                     >
                       <Filter
                         className={`h-4 w-4 transition-transform duration-200 ${showFilters ? 'rotate-180' : ''}`}
+                        aria-hidden="true"
                       />
                       {showFilters ? 'Hide' : 'Show'} Filters
                     </Button>
@@ -564,7 +567,7 @@ export default function Agents() {
                 <div className='flex items-center justify-between'>
                   <div className='flex items-center gap-6'>
                     <div className='flex items-center gap-3'>
-                      <div className='w-10 h-10 bg-gradient-to-br from-gray-500 to-purple-600 rounded-xl flex items-center justify-center shadow-sm'>
+                      <div className='w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center shadow-sm'>
                         <Users className='h-5 w-5 text-white' />
                       </div>
                       <div>
@@ -679,7 +682,7 @@ export default function Agents() {
                   {filteredAgents.map((agent, index) => (
                     <tr
                       key={agent.id}
-                      className={`hover:bg-gradient-to-r hover:from-gray-50/50 hover:to-purple-50/50 transition-all duration-200 group ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+                      className={`hover:bg-gray-50 transition-all duration-200 group ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
                     >
                       <td className='px-8 py-5 whitespace-nowrap'>
                     <div className='flex items-center'>

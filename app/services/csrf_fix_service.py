@@ -24,7 +24,7 @@ class CSRFFixService:
         self.fallback_tokens = {}
         self.error_count = 0
         self.max_errors = 10
-        self._csrf_enabled = True
+        self._csrf_enabled = True  # CSRF is always enabled, this flag is for monitoring only
     
     def generate_safe_csrf_token(self) -> str:
         """Generate a CSRF token with automatic fallback and proper session handling"""
@@ -152,28 +152,64 @@ class CSRFFixService:
             return response
     
     def handle_csrf_error(self, error: Exception) -> Dict[str, Any]:
-        """Handle CSRF errors gracefully"""
+        """Handle CSRF errors gracefully - NEVER disable CSRF protection"""
+        import json
+        from datetime import datetime
+        
         self.error_count += 1
         
+        # #region agent log
+        try:
+            with open(r'c:\PipLinePro\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"runtime","hypothesisId":"B","location":"app/services/csrf_fix_service.py:156","message":"CSRF error handled","data":{"error_count":self.error_count,"max_errors":self.max_errors},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except: pass
+        # #endregion
+        
+        # SECURITY: Never disable CSRF protection, even after many errors
+        # Instead, log the issue and generate a new token
         if self.error_count > self.max_errors:
-            logger.critical(f"Too many CSRF errors ({self.error_count}), disabling CSRF temporarily")
-            self._csrf_enabled = False
-            return {
-                'error': 'CSRF protection temporarily disabled',
-                'token': self._generate_fallback_token(),
-                'disabled': True
-            }
+            logger.critical(
+                f"Too many CSRF errors ({self.error_count}). "
+                "This may indicate an attack or configuration issue. "
+                "CSRF protection remains enabled for security."
+            )
+            # Reset error count to prevent log spam, but keep CSRF enabled
+            self.error_count = 0
+            # #region agent log
+            try:
+                with open(r'c:\PipLinePro\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"runtime","hypothesisId":"B","location":"app/services/csrf_fix_service.py:170","message":"CSRF error count reset but protection remains enabled","data":{"error_count":self.error_count},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except: pass
+            # #endregion
         
         logger.warning(f"CSRF error handled: {str(error)}")
-        return {
-            'error': 'CSRF validation failed',
+        result = {
+            'error': 'CSRF validation failed. Please refresh the page and try again.',
             'token': self.generate_safe_csrf_token(),
-            'disabled': False
+            'disabled': False  # CSRF is always enabled
         }
+        # #region agent log
+        try:
+            with open(r'c:\PipLinePro\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"runtime","hypothesisId":"B","location":"app/services/csrf_fix_service.py:180","message":"CSRF error response","data":{"disabled":result['disabled']},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except: pass
+        # #endregion
+        return result
     
     def is_csrf_enabled(self) -> bool:
-        """Check if CSRF protection is enabled"""
-        return self._csrf_enabled
+        """Check if CSRF protection is enabled - always returns True"""
+        import json
+        from datetime import datetime
+        
+        # SECURITY: CSRF protection is never disabled
+        result = True
+        # #region agent log
+        try:
+            with open(r'c:\PipLinePro\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"runtime","hypothesisId":"B","location":"app/services/csrf_fix_service.py:177","message":"CSRF enabled check","data":{"is_enabled":result},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except: pass
+        # #endregion
+        return result
     
     def reset_error_count(self):
         """Reset error count to re-enable CSRF protection"""

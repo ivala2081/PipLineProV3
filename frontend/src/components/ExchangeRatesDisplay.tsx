@@ -9,6 +9,7 @@ import {
   ExchangeRate 
 } from '../services/exchangeRatesService';
 import { useExchangeRates } from '../hooks/useExchangeRates';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ExchangeRatesDisplayProps {
   date: string;
@@ -36,6 +37,7 @@ const ManualOverrideModal: React.FC<ManualOverrideModalProps> = ({
   date,
   onUpdate,
 }) => {
+  const { t } = useLanguage();
   const [newRate, setNewRate] = useState(currentRate.toString());
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -75,13 +77,13 @@ const ManualOverrideModal: React.FC<ManualOverrideModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
         <h3 className="text-lg font-semibold mb-4">
-          Manual Override - {exchangeRatesService.formatCurrencyPair(currencyPair)}
+          {t('exchange_rates_display.manual_override')} - {exchangeRatesService.formatCurrencyPair(currencyPair)}
         </h3>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Current Rate
+              {t('exchange_rates_display.current_rate')}
             </label>
             <div className="text-gray-600 bg-gray-50 px-3 py-2 rounded border">
               {exchangeRatesService.formatRate(currentRate, currencyPair)}
@@ -90,7 +92,7 @@ const ManualOverrideModal: React.FC<ManualOverrideModalProps> = ({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              New Rate *
+              {t('exchange_rates_display.new_rate')} *
             </label>
             <input
               type="number"
@@ -98,20 +100,20 @@ const ManualOverrideModal: React.FC<ManualOverrideModalProps> = ({
               value={newRate}
               onChange={(e) => setNewRate(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500"
-              placeholder="Enter new rate"
+              placeholder={t('exchange_rates_display.enter_new_rate')}
               required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Reason (Optional)
+              {t('exchange_rates_display.reason_optional')}
             </label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500"
-              placeholder="Why are you overriding this rate?"
+              placeholder={t('exchange_rates_display.why_override')}
               rows={3}
             />
           </div>
@@ -129,14 +131,14 @@ const ManualOverrideModal: React.FC<ManualOverrideModalProps> = ({
               className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
               disabled={loading}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
               className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50"
               disabled={loading}
             >
-              {loading ? 'Updating...' : 'Update Rate'}
+              {loading ? t('exchange_rates_display.updating') : t('exchange_rates_display.update_rate')}
             </button>
           </div>
         </form>
@@ -158,6 +160,7 @@ const ExchangeRateCard: React.FC<{
   showQuality = true, 
   showManualOverride = true 
 }) => {
+  const { t } = useLanguage();
   const validation = exchangeRatesService.validateRate(rate.rate, rate.currency_pair);
   const hasWarning = validation.warning && !rate.is_manual_override;
 
@@ -179,9 +182,9 @@ const ExchangeRateCard: React.FC<{
           <button
             onClick={() => onManualOverride(rate.currency_pair, rate.rate)}
             className="text-gray-600 hover:text-gray-800 text-sm font-medium"
-            title="Manual Override"
+            title={t('exchange_rates_display.manual_override')}
           >
-            ✏️ Edit
+            ✏️ {t('exchange_rates_display.edit')}
           </button>
         )}
       </div>
@@ -193,7 +196,7 @@ const ExchangeRateCard: React.FC<{
             <span>{exchangeRatesService.getSourceDisplayName(rate.source)}</span>
             {rate.is_manual_override && (
               <span className="ml-2 text-gray-600 text-xs font-medium">
-                (Manual Override)
+                {t('exchange_rates_display.manual_override_label')}
               </span>
             )}
           </div>
@@ -212,7 +215,7 @@ const ExchangeRateCard: React.FC<{
 
         {rate.override_reason && (
           <div className="text-xs text-gray-500 italic">
-            Reason: {rate.override_reason}
+            {t('exchange_rates_display.reason')} {rate.override_reason}
           </div>
         )}
 
@@ -238,6 +241,7 @@ export const ExchangeRatesDisplay: React.FC<ExchangeRatesDisplayProps> = ({
   showManualOverride = true,
   className = '',
 }) => {
+  const { t } = useLanguage();
   const {
     rates,
     loading,
@@ -291,7 +295,7 @@ export const ExchangeRatesDisplay: React.FC<ExchangeRatesDisplayProps> = ({
       <div className={`bg-white rounded-lg border p-6 ${className}`}>
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
-          <span className="ml-3 text-gray-600">Loading exchange rates...</span>
+          <span className="ml-3 text-gray-600">{t('exchange_rates_display.loading_exchange_rates')}</span>
         </div>
       </div>
     );
@@ -301,14 +305,14 @@ export const ExchangeRatesDisplay: React.FC<ExchangeRatesDisplayProps> = ({
     return (
       <div className={`bg-white rounded-lg border border-red-200 p-6 ${className}`}>
         <div className="text-red-600 mb-4">
-          <h3 className="font-semibold">Error Loading Exchange Rates</h3>
+          <h3 className="font-semibold">{t('exchange_rates_display.error_loading_rates')}</h3>
           <p className="text-sm">{error}</p>
         </div>
         <button
           onClick={() => window.location.reload()}
           className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
         >
-          Retry
+          {t('exchange_rates_display.retry')}
         </button>
       </div>
     );
@@ -318,9 +322,9 @@ export const ExchangeRatesDisplay: React.FC<ExchangeRatesDisplayProps> = ({
     <div className={`bg-white rounded-lg border p-6 ${className}`}>
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Exchange Rates</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{t('exchange_rates_display.exchange_rates')}</h3>
           <p className="text-sm text-gray-600">
-            {date} • {lastUpdated ? `Last updated: ${lastUpdated.toLocaleTimeString()}` : 'Not loaded'}
+            {date} • {lastUpdated ? `${t('exchange_rates_display.last_updated')} ${lastUpdated.toLocaleTimeString()}` : t('exchange_rates_display.not_loaded')}
           </p>
         </div>
         
@@ -329,7 +333,7 @@ export const ExchangeRatesDisplay: React.FC<ExchangeRatesDisplayProps> = ({
           disabled={loading}
           className="px-3 py-1 text-sm bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50"
         >
-          {loading ? 'Refreshing...' : '🔄 Refresh'}
+          {loading ? t('exchange_rates_display.refreshing') : t('exchange_rates_display.refresh')}
         </button>
       </div>
 
@@ -342,7 +346,7 @@ export const ExchangeRatesDisplay: React.FC<ExchangeRatesDisplayProps> = ({
               <div key={currencyPair} className="bg-gray-50 rounded-lg border border-dashed border-gray-300 p-4">
                 <div className="text-gray-500 text-center">
                   <div className="font-medium">{exchangeRatesService.formatCurrencyPair(currencyPair)}</div>
-                  <div className="text-sm">Rate not available</div>
+                  <div className="text-sm">{t('exchange_rates_display.rate_not_available')}</div>
                 </div>
               </div>
             );

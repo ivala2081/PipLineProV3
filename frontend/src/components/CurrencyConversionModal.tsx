@@ -107,7 +107,7 @@ const CurrencyConversionModal: React.FC<CurrencyConversionModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-2xl border border-gray-200 max-w-md w-full max-h-[90vh] flex flex-col">
         {/* Header - Fixed */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-indigo-50 flex-shrink-0">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-slate-50 via-white to-indigo-50 flex-shrink-0">
           <div className="flex items-center">
             <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-3">
               <DollarSign className="h-4 w-4 text-gray-600" />

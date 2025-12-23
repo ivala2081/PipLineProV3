@@ -1,21 +1,27 @@
 import { useState, useEffect } from 'react';
+import { useTheme } from 'next-themes';
 import { designTokens, componentTokens, themeVariants } from './design-tokens';
 
-// Hook for managing design system state (light theme only)
+// Hook for managing design system state with dark mode support
 export const useDesignSystem = () => {
-  // Force light theme
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid hydration mismatch
   useEffect(() => {
-    const root = document.documentElement;
-    root.classList.remove('dark');
+    setMounted(true);
   }, []);
 
+  // Determine if dark mode is active
+  const isDark = mounted && (resolvedTheme === 'dark' || theme === 'dark');
+
   return {
-    theme: 'light' as const,
-    setTheme: () => {}, // No-op since we only support light theme
-    isDark: false,
+    theme: (mounted ? (resolvedTheme || theme) : 'light') as 'light' | 'dark',
+    setTheme,
+    isDark: mounted ? isDark : false,
     tokens: designTokens,
     componentTokens,
-    themeVariants: themeVariants.light,
+    themeVariants: isDark ? themeVariants.dark : themeVariants.light,
   };
 };
 

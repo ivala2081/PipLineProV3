@@ -67,8 +67,9 @@ const Future: React.FC = () => {
                       onClick={handlePauseToggle}
               className="h-8 w-8 p-0"
               title={isPaused ? 'Resume' : 'Pause'}
+              aria-label={isPaused ? 'Resume AI assistant' : 'Pause AI assistant'}
                     >
-                      {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                      {isPaused ? <Play className="w-4 h-4" aria-hidden="true" /> : <Pause className="w-4 h-4" aria-hidden="true" />}
                     </Button>
             
             <Button 
@@ -77,8 +78,9 @@ const Future: React.FC = () => {
               onClick={handleReset}
               className="h-8 w-8 p-0"
               title="Reset"
+              aria-label="Reset AI assistant"
             >
-                      <RotateCcw className="w-4 h-4" />
+                      <RotateCcw className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

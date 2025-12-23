@@ -106,7 +106,7 @@ export function AILogo() {
                   }}
                 >
                   <motion.div
-                    className="absolute w-2.5 h-2.5 rounded-full bg-gradient-to-br from-purple-400 to-pink-500"
+                    className="absolute w-2.5 h-2.5 rounded-full bg-gray-600"
                     style={{
                       top: '50%',
                       left: '100%',

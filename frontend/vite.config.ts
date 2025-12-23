@@ -1,10 +1,13 @@
-import { defineConfig } from 'vite'
+﻿import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { visualizer } from 'rollup-plugin-visualizer'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // Base path for production - use relative paths to work in any subdirectory
+  base: process.env.VITE_BASE_PATH || '/',
+  
   plugins: [
     react(),
     // Bundle analyzer - disabled in production CI/CD builds
@@ -34,27 +37,27 @@ export default defineConfig({
         timeout: 120000, // 120 second timeout (increased for slow financial performance queries)
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
-            console.log('🔴 Proxy error:', err.message);
-            console.log('💡 Make sure Flask backend is running on http://127.0.0.1:5000');
+            console.log('ðŸ”´ Proxy error:', err.message);
+            console.log('ðŸ’¡ Make sure Flask backend is running on http://127.0.0.1:5000');
           });
           proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('📤 Proxying:', req.method, req.url);
+            console.log('ðŸ“¤ Proxying:', req.method, req.url);
           });
           proxy.on('proxyRes', (proxyRes, req, _res) => {
-            console.log('📥 Response:', proxyRes.statusCode, req.url);
+            console.log('ðŸ“¥ Response:', proxyRes.statusCode, req.url);
           });
         },
       },
     },
   },
   build: {
-    outDir: 'dist',
-    emptyOutDir: true,
+    outDir: 'dist_new',
+    emptyOutDir: false,
     sourcemap: false, // Disable sourcemaps in production for better performance
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: true, // AUTO-REMOVE: All console.log() in production builds (Phase 1 ✅)
+        drop_console: true, // AUTO-REMOVE: All console.log() in production builds (Phase 1 âœ…)
         drop_debugger: true, // Remove debugger statements
         pure_funcs: ['console.log', 'console.info', 'console.debug'], // Remove console logs
         passes: 2, // Multiple passes for better optimization
@@ -70,7 +73,10 @@ export default defineConfig({
         propertyReadSideEffects: false,
         tryCatchDeoptimization: false,
       },
-        output: {
+      output: {
+        // Ensure proper chunk loading in production
+        // Use relative paths for better compatibility
+        format: 'es',
         // Chunk naming configuration
         manualChunks: (id) => {
           // Node modules chunking
@@ -153,7 +159,8 @@ export default defineConfig({
           // Split large feature modules
           if (id.includes('/pages/')) {
             const pageName = id.split('/pages/')[1].split('.')[0];
-            if (['SystemMonitor', 'BusinessAnalytics', 'Reports', 'RevenueAnalytics'].includes(pageName)) {
+            // Give Accounting its own chunk to prevent loading issues
+            if (['SystemMonitor', 'BusinessAnalytics', 'Reports', 'RevenueAnalytics', 'Accounting'].includes(pageName)) {
               return `pages-${pageName.toLowerCase()}`;
             }
             return 'pages';
@@ -177,8 +184,6 @@ export default defineConfig({
         },
         chunkFileNames: 'js/[name]-[hash].js',
         entryFileNames: 'js/index-[hash].js',
-        // Ensure proper chunk loading order
-        format: 'es',
         assetFileNames: (assetInfo) => {
           const info = assetInfo.name.split('.');
           const ext = info[info.length - 1];

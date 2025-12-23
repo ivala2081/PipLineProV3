@@ -23,7 +23,7 @@ export const useNavigationLoading = () => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   const setLoading = (loading: boolean, message: string = 'Loading...') => {
     setIsNavigating(loading);

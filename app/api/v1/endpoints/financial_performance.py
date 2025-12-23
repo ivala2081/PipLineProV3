@@ -615,7 +615,11 @@ def get_daily_financial_performance():
         # Calculate metrics for the specific date
         metrics = calculate_financial_metrics(target_date, target_date)
         
-        logger.info(f"Daily metrics calculated: Bank TL={metrics['net_amounts']['BANK']['TL']}, CC TL={metrics['net_amounts']['CC']['TL']}, Tether USD={metrics['net_amounts']['TETHER']['USD']}")
+        # Calculate NET Tether for logging
+        tether_deposits_log = float(metrics['deposits']['TETHER']['USD'])
+        tether_withdrawals_log = float(metrics['withdrawals']['TETHER']['USD'])
+        net_tether_log = tether_deposits_log - tether_withdrawals_log
+        logger.info(f"Daily metrics calculated: Bank TL (gross)={metrics['gross_amounts']['BANK']['TL']}, CC TL (gross)={metrics['gross_amounts']['CC']['TL']}, Tether USD (net)={net_tether_log}")
         
         # Get historical exchange rate for the specific date
         try:
@@ -634,30 +638,43 @@ def get_daily_financial_performance():
         # Calculate Conv total
         def calculate_conv_total(metrics, rate):
             """Calculate total revenue in USD by converting TL amounts to USD"""
-            # Use net amounts for Conv calculation (after commission)
-            amounts = metrics['net_amounts']
-            bank_usd = float(amounts['BANK']['USD'])
-            bank_tl_to_usd = float(amounts['BANK']['TL']) / rate
-            cc_usd = float(amounts['CC']['USD'])
-            cc_tl_to_usd = float(amounts['CC']['TL']) / rate
-            tether_usd = float(amounts['TETHER']['USD'])
+            # Use GROSS amounts for BANK/CC (before commission) to match Excel
+            gross_amounts = metrics['gross_amounts']
+            bank_usd = float(gross_amounts['BANK']['USD'])
+            bank_tl_to_usd = float(gross_amounts['BANK']['TL']) / rate
+            cc_usd = float(gross_amounts['CC']['USD'])
+            cc_tl_to_usd = float(gross_amounts['CC']['TL']) / rate
+            # Use NET Tether (deposits - withdrawals) to match Excel
+            tether_deposits = float(metrics['deposits']['TETHER']['USD'])
+            tether_withdrawals = float(metrics['withdrawals']['TETHER']['USD'])
+            tether_usd = tether_deposits - tether_withdrawals
             
             total_usd = bank_usd + bank_tl_to_usd + cc_usd + cc_tl_to_usd + tether_usd
             return total_usd
         
         conv_usd = calculate_conv_total(metrics, exchange_rate)
         
-        # Format response - use net amounts by default for daily endpoint
+        # Format response - use GROSS amounts for BANK/CC (before commission) to match Excel
+        # Use NET Tether (deposits - withdrawals) instead of sum of all transactions
+        gross_amounts = metrics['gross_amounts']
         net_amounts = metrics['net_amounts']
+        
+        # Calculate NET Tether (deposits - withdrawals) instead of sum of all
+        tether_deposits = float(metrics['deposits']['TETHER']['USD'])
+        tether_withdrawals = float(metrics['withdrawals']['TETHER']['USD'])
+        net_tether_usd = tether_deposits - tether_withdrawals
+        
         response_data = {
             'success': True,
             'data': {
-                'total_bank_usd': float(net_amounts['BANK']['USD']),
-                'total_bank_tl': float(net_amounts['BANK']['TL']),
-                'total_cc_usd': float(net_amounts['CC']['USD']),
-                'total_cc_tl': float(net_amounts['CC']['TL']),
-                'total_tether_usd': float(net_amounts['TETHER']['USD']),
-                'total_tether_tl': float(net_amounts['TETHER']['TL']),
+                # Use GROSS amounts for BANK/CC (before commission) to match Excel expectations
+                'total_bank_usd': float(gross_amounts['BANK']['USD']),
+                'total_bank_tl': float(gross_amounts['BANK']['TL']),
+                'total_cc_usd': float(gross_amounts['CC']['USD']),
+                'total_cc_tl': float(gross_amounts['CC']['TL']),
+                # Use NET Tether (deposits - withdrawals) to match Excel expectations
+                'total_tether_usd': net_tether_usd,
+                'total_tether_tl': float(net_amounts['TETHER']['TL']),  # Keep TL as is for now
                 'conv_usd': conv_usd,
                 'conv_tl': 0.0,
                 'total_transactions': metrics['total_transactions'],

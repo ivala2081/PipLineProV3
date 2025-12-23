@@ -205,7 +205,7 @@ export default function AddTransaction() {
       setDropdownsLoaded(true);
       
       // Show warning instead of error
-      setError(`Dropdown seçenekleri API'den yüklenemedi, varsayılan değerler kullanılıyor. (${errorMessage}${errorDetails})`);
+      setError(`${t('transactions.add_transaction_form.errors.dropdown_load_failed')} (${errorMessage}${errorDetails})`);
       
       // Clear error after 5 seconds
       setTimeout(() => {
@@ -300,49 +300,49 @@ export default function AddTransaction() {
 
     // Enhanced validation
     if (!formData.client_name.trim()) {
-      setError('Client name is required.');
+      setError(t('transactions.add_transaction_form.validation.client_name_required'));
       return;
     }
 
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      setError('Please enter a valid amount greater than 0.');
+      setError(t('transactions.add_transaction_form.validation.amount_required'));
       return;
     }
 
     if (!formData.date) {
-      setError('Please select a date.');
+      setError(t('transactions.add_transaction_form.validation.date_required'));
       return;
     }
 
     if (!formData.currency) {
-      setError('Please select a currency.');
+      setError(t('transactions.add_transaction_form.validation.currency_required'));
       return;
     }
 
     if (!formData.category) {
-      setError('Please select a category (WD or DEP).');
+      setError(t('transactions.add_transaction_form.validation.category_required'));
       return;
     }
 
     // Validate category is one of the allowed values
     if (!['WD', 'DEP'].includes(formData.category)) {
-      setError('Category must be WD (Withdraw) or DEP (Deposit).');
+      setError(t('transactions.add_transaction_form.validation.category_invalid'));
       return;
     }
 
     // Validate currency is one of the allowed values
     if (!['TL', 'USD', 'EUR'].includes(formData.currency)) {
-      setError('Currency must be TL, USD, or EUR.');
+      setError(t('transactions.add_transaction_form.validation.currency_invalid'));
       return;
     }
 
     if (formData.currency === 'EUR' && !formData.eur_rate) {
-      setError('Please enter the EUR exchange rate.');
+      setError(t('transactions.add_transaction_form.validation.eur_rate_required'));
       return;
     }
 
     if (formData.currency === 'USD' && !formData.usd_rate) {
-      setError('Please enter the USD exchange rate.');
+      setError(t('transactions.add_transaction_form.validation.usd_rate_required'));
       return;
     }
 
@@ -359,7 +359,7 @@ export default function AddTransaction() {
         const sessionValid = await api.refreshSession();
         if (!sessionValid) {
           setError(
-            'Session validation failed. Please refresh the page and try again.'
+            t('transactions.add_transaction_form.errors.csrf_error')
           );
           setSubmitting(false);
           return;
@@ -394,7 +394,7 @@ export default function AddTransaction() {
         const sessionValid = await api.refreshSession();
         if (!sessionValid) {
           setError(
-            'CSRF token validation failed. Please refresh the page and try again.'
+            t('transactions.add_transaction_form.errors.csrf_error')
           );
           setSubmitting(false);
           return;
@@ -404,6 +404,12 @@ export default function AddTransaction() {
 
       // Prepare payload with exchange rate if provided
       const payload: any = { ...formData };
+      console.log('📤 Sending transaction payload:', {
+        ...payload,
+        psp: payload.psp,
+        psp_type: typeof payload.psp,
+        psp_length: payload.psp?.length
+      });
       if (formData.currency === 'USD' && formData.usd_rate) {
         payload.exchange_rate = formData.usd_rate;
       }
@@ -552,7 +558,7 @@ export default function AddTransaction() {
 
       // If response is not ok, try to get error message from response
       if (!response.ok) {
-        let errorMessage = 'Failed to add transaction';
+        let errorMessage = t('transactions.add_transaction_form.errors.failed_to_add');
         try {
           const errorData: any = response.data;
           
@@ -562,7 +568,7 @@ export default function AddTransaction() {
             (errorData.csrf_error || errorData.error === 'CSRF validation failed' ||
              errorData.message?.includes('CSRF') || errorData.message?.includes('Security token'))
           ) {
-            errorMessage = errorData.message || 'Security token issue. Please refresh the page and try again.';
+            errorMessage = errorData.message || t('transactions.add_transaction_form.errors.csrf_error');
           } else if (errorData?.error?.message) {
             errorMessage = errorData.error.message;
           } else if (errorData?.error) {
@@ -640,7 +646,7 @@ export default function AddTransaction() {
           (data as any)?.error?.message ||
           (data as any)?.error ||
           (data as any)?.message ||
-          'Failed to add transaction';
+          t('transactions.add_transaction_form.errors.failed_to_add');
         console.error('❌ Transaction creation failed:', errorMessage);
         setError(errorMessage);
       }
@@ -662,34 +668,34 @@ export default function AddTransaction() {
           errorMessage.includes('Security token')
         ) {
           setError(
-            'Security token issue. Please refresh the page and try again.'
+            t('transactions.add_transaction_form.errors.csrf_error')
           );
         } else if (
           errorMessage.includes('Authentication') ||
           errorMessage.includes('login')
         ) {
-          setError('Session expired. Please log in again.');
+          setError(t('transactions.add_transaction_form.errors.session_expired'));
         } else if (
           errorMessage.includes('401') ||
           errorMessage.includes('unauthorized')
         ) {
-          setError('Authentication required. Please log in to continue.');
+          setError(t('transactions.add_transaction_form.errors.authentication_required'));
         } else if (
           errorMessage.includes('308') ||
           errorMessage.includes('redirect')
         ) {
-          setError('URL redirect issue. Please try again.');
+          setError(t('transactions.add_transaction_form.errors.url_redirect'));
         } else if (errorMessage.includes('404')) {
-          setError('API endpoint not found. Please check your connection.');
+          setError(t('transactions.add_transaction_form.errors.endpoint_not_found'));
         } else if (errorMessage.includes('500')) {
-          setError('Server error. Please try again in a few moments.');
+          setError(t('transactions.add_transaction_form.errors.server_error'));
         } else if (errorMessage.includes('403')) {
-          setError('Access denied. Please check your permissions.');
+          setError(t('transactions.add_transaction_form.errors.access_denied'));
         } else {
-          setError(`Failed to add transaction: ${errorMessage}`);
+          setError(`${t('transactions.add_transaction_form.errors.failed_to_add')}: ${errorMessage}`);
         }
       } else {
-        setError('Failed to add transaction. Please try again.');
+        setError(t('transactions.add_transaction_form.errors.failed_to_add_retry'));
       }
     } finally {
       setSubmitting(false);
@@ -708,7 +714,7 @@ export default function AddTransaction() {
       setSecurityCodeError('');
       setShowManualCommission(true);
     } else {
-      setSecurityCodeError('Invalid security code. Please try again.');
+      setSecurityCodeError(t('transactions.add_transaction_form.invalid_security_code'));
       setSecurityCodeVerified(false);
     }
   };
@@ -756,10 +762,10 @@ export default function AddTransaction() {
             </div>
             <div>
               <h2 className='text-xl font-semibold text-gray-900 mb-2'>
-                Loading Transaction Form
+                {t('transactions.add_transaction_form.loading_form')}
               </h2>
               <p className='text-gray-600'>
-                Please wait while we prepare the form and load your options...
+                {t('transactions.add_transaction_form.loading_message')}
               </p>
             </div>
           </div>
@@ -778,10 +784,10 @@ export default function AddTransaction() {
             </div>
             <div>
               <h2 className='text-2xl font-bold text-gray-900 mb-2'>
-                Transaction Added Successfully!
+                {t('transactions.add_transaction_form.success_title')}
               </h2>
               <p className='text-gray-600'>
-                The transaction has been added to your pipeline and is now available in your transaction list.
+                {t('transactions.add_transaction_form.success_message')}
               </p>
             </div>
             <div className='flex flex-col sm:flex-row gap-3'>
@@ -792,7 +798,7 @@ export default function AddTransaction() {
                 icon={<FileText className="h-4 w-4" />}
                 className="flex-1"
               >
-                View Clients
+                {t('transactions.add_transaction_form.view_clients')}
               </UnifiedButton>
               <UnifiedButton
                 variant="outline"
@@ -801,7 +807,7 @@ export default function AddTransaction() {
                 icon={<Plus className="h-4 w-4" />}
                 className="flex-1"
               >
-                Add Another
+                {t('transactions.add_transaction_form.add_another')}
               </UnifiedButton>
             </div>
           </div>
@@ -813,7 +819,7 @@ export default function AddTransaction() {
   return (
     <div className='min-h-screen bg-gray-50'>
       {/* Professional Header */}
-      <div className='bg-white border-b border-gray-200 shadow-sm'>
+      <div>
         <div className='max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'>
           <div className='flex items-center justify-between h-16'>
             <div className='flex items-center space-x-4'>
@@ -824,47 +830,21 @@ export default function AddTransaction() {
                 icon={<ArrowLeft className="h-4 w-4" />}
                 className="text-gray-600 hover:text-gray-900"
               >
-                Back to Transactions
+                {t('transactions.add_transaction_form.back_to_transactions')}
               </UnifiedButton>
               <div className='h-6 w-px bg-gray-300' />
               <div className='flex items-center space-x-3'>
-                <div className='w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center shadow-sm'>
+                <div className='w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center shadow-sm'>
                   <FileText className='h-5 w-5 text-white' />
                 </div>
                 <div>
                   <h1 className='text-xl font-semibold text-gray-900'>
-                    Add New Transaction
+                    {t('transactions.add_transaction_form.title')}
                   </h1>
                   <p className='text-sm text-gray-500'>
-                    Create a new transaction record
+                    {t('transactions.add_transaction_form.subtitle')}
                   </p>
                 </div>
-              </div>
-            </div>
-            <div className='flex items-center space-x-3'>
-              <div className='flex items-center space-x-2 text-sm'>
-                {autoSaveStatus === 'saving' && (
-                  <>
-                    <RefreshCw className='h-4 w-4 text-blue-500 animate-spin' />
-                    <span className='text-blue-600'>Saving...</span>
-                  </>
-                )}
-                {autoSaveStatus === 'saved' && (
-                  <>
-                    <CheckCircle className='h-4 w-4 text-green-500' />
-                    <span className='text-green-600'>Auto-saved</span>
-                  </>
-                )}
-                {autoSaveStatus === 'error' && (
-                  <>
-                    <AlertTriangle className='h-4 w-4 text-red-500' />
-                    <span className='text-red-600'>Save failed</span>
-                  </>
-                )}
-              </div>
-              <div className='flex items-center space-x-2 text-sm text-green-600'>
-                <Shield className='h-4 w-4' />
-                <span>Secure</span>
               </div>
             </div>
           </div>
@@ -886,7 +866,7 @@ export default function AddTransaction() {
                   <AlertTriangle className='h-4 w-4 text-red-600' />
                 </div>
                 <div>
-                  <h3 className='font-medium text-red-900'>Validation Error</h3>
+                  <h3 className='font-medium text-red-900'>{t('transactions.add_transaction_form.validation_error')}</h3>
                   <p className='text-sm text-red-700 mt-1'>{error}</p>
                 </div>
               </div>
@@ -898,14 +878,14 @@ export default function AddTransaction() {
             {/* Basic Information Card */}
             <UnifiedCard
               header={{
-                title: "Basic Information",
-                description: "Essential transaction details"
+                title: t('transactions.add_transaction_form.basic_information'),
+                description: t('transactions.add_transaction_form.basic_information_desc')
               }}
             >
               <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
                 <div className='space-y-2'>
                   <label className='block text-sm font-medium text-gray-700'>
-                    Client Name *
+                    {t('transactions.add_transaction_form.client_name')} *
                   </label>
                   <div className='relative'>
                     <User className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
@@ -914,14 +894,14 @@ export default function AddTransaction() {
                       value={formData.client_name}
                       onChange={e => handleInputChange('client_name', e.target.value)}
                       className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white'
-                      placeholder='Enter client name'
+                      placeholder={t('transactions.add_transaction_form.client_name_placeholder')}
                       required
                     />
                   </div>
                 </div>
                 <div className='space-y-2'>
                   <label className='block text-sm font-medium text-gray-700'>
-                    Transaction Date *
+                    {t('transactions.add_transaction_form.transaction_date')} *
                   </label>
                   <div className='relative'>
                     <Calendar className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
@@ -936,7 +916,7 @@ export default function AddTransaction() {
                 </div>
                 <div className='space-y-2'>
                   <label className='block text-sm font-medium text-gray-700'>
-                    Amount *
+                    {t('transactions.add_transaction_form.amount')} *
                   </label>
                   <div className='relative'>
                     <DollarSign className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
@@ -946,14 +926,14 @@ export default function AddTransaction() {
                       value={formData.amount}
                       onChange={e => handleInputChange('amount', e.target.value)}
                       className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white'
-                      placeholder='0.00'
+                      placeholder={t('transactions.add_transaction_form.amount_placeholder')}
                       required
                     />
                   </div>
                 </div>
                 <div className='space-y-2'>
                   <label className='block text-sm font-medium text-gray-700'>
-                    Currency *
+                    {t('transactions.add_transaction_form.currency')} *
                   </label>
                   <div className='relative'>
                     <Globe className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10' />
@@ -964,7 +944,7 @@ export default function AddTransaction() {
                       required
                       disabled={!dropdownsLoaded}
                     >
-                      <option value=''>{dropdownsLoaded ? 'Select Currency' : 'Loading...'}</option>
+                      <option value=''>{dropdownsLoaded ? t('transactions.add_transaction_form.select_currency') : t('transactions.add_transaction_form.loading')}</option>
                       {dropdownOptions.currency && dropdownOptions.currency.length > 0 ? (
                         dropdownOptions.currency.map(option => (
                           <option key={option.id} value={option.value}>
@@ -993,14 +973,14 @@ export default function AddTransaction() {
             {/* Payment Information Card */}
             <UnifiedCard
               header={{
-                title: "Payment Information",
-                description: "Payment method and transaction category"
+                title: t('transactions.add_transaction_form.payment_information'),
+                description: t('transactions.add_transaction_form.payment_information_desc')
               }}
             >
               <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
                 <div className='space-y-2'>
                   <label className='block text-sm font-medium text-gray-700'>
-                    Payment Method *
+                    {t('transactions.add_transaction_form.payment_method')} *
                   </label>
                   <div className='relative'>
                     <CreditCard className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10' />
@@ -1011,7 +991,7 @@ export default function AddTransaction() {
                       required
                       disabled={!dropdownsLoaded}
                     >
-                      <option value=''>{dropdownsLoaded ? 'Select Payment Method' : 'Loading...'}</option>
+                      <option value=''>{dropdownsLoaded ? t('transactions.add_transaction_form.select_payment_method') : t('transactions.add_transaction_form.loading')}</option>
                       {dropdownOptions.payment_method && dropdownOptions.payment_method.length > 0 ? (
                         dropdownOptions.payment_method.map(option => (
                           <option key={option.id} value={option.value}>
@@ -1036,7 +1016,7 @@ export default function AddTransaction() {
                 </div>
                 <div className='space-y-2'>
                   <label className='block text-sm font-medium text-gray-700'>
-                    Transaction Category *
+                    {t('transactions.add_transaction_form.transaction_category')} *
                   </label>
                   <div className='relative'>
                     <Tag className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10' />
@@ -1046,9 +1026,9 @@ export default function AddTransaction() {
                       className='w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white appearance-none cursor-pointer'
                       required
                     >
-                      <option value=''>Select Category</option>
-                      <option value='WD'>WD (Withdraw)</option>
-                      <option value='DEP'>DEP (Deposit)</option>
+                      <option value=''>{t('transactions.add_transaction_form.select_category')}</option>
+                      <option value='WD'>{t('transactions.add_transaction_form.category_wd')}</option>
+                      <option value='DEP'>{t('transactions.add_transaction_form.category_dep')}</option>
                     </select>
                     <div className='absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none'>
                       <svg className='h-4 w-4 text-gray-400' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
@@ -1058,12 +1038,12 @@ export default function AddTransaction() {
                   </div>
                   <div className='flex items-center gap-2 text-sm text-gray-600 bg-blue-50 p-2 rounded-lg'>
                     <Info className='h-4 w-4 text-blue-500' />
-                    <span>WD = Withdraw (no commission), DEP = Deposit (with commission)</span>
+                    <span>{t('transactions.add_transaction_form.category_info')}</span>
                   </div>
                 </div>
                 <div className='space-y-2'>
                   <label className='block text-sm font-medium text-gray-700'>
-                    PSP/KASA (Optional)
+                    {t('transactions.add_transaction_form.psp_kasa')}
                   </label>
                   <div className='relative'>
                     <Building2 className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10' />
@@ -1073,7 +1053,7 @@ export default function AddTransaction() {
                       className='w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white appearance-none cursor-pointer'
                       disabled={!dropdownsLoaded}
                     >
-                      <option value=''>{dropdownsLoaded ? 'Select PSP/KASA' : 'Loading...'}</option>
+                      <option value=''>{dropdownsLoaded ? t('transactions.add_transaction_form.select_psp_kasa') : t('transactions.add_transaction_form.loading')}</option>
                       {dropdownOptions.psp && dropdownOptions.psp.length > 0 ? (
                         dropdownOptions.psp.map(option => (
                           <option key={option.id} value={option.value}>
@@ -1095,11 +1075,11 @@ export default function AddTransaction() {
             {/* Manual Commission - Minimal Design */}
             <div className='bg-white border border-gray-200 rounded-lg p-4'>
               <div className='flex items-center justify-between mb-3'>
-                <h3 className='text-sm font-medium text-gray-900'>Manual Commission</h3>
+                <h3 className='text-sm font-medium text-gray-900'>{t('transactions.add_transaction_form.manual_commission')}</h3>
                 {securityCodeVerified && (
                   <span className='inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full'>
                     <CheckCircle className='h-3 w-3' />
-                    Active
+                    {t('transactions.add_transaction_form.active')}
                   </span>
                 )}
               </div>
@@ -1112,14 +1092,14 @@ export default function AddTransaction() {
                       value={securityCode}
                       onChange={e => setSecurityCode(e.target.value)}
                       className='flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500'
-                      placeholder='Security code'
+                      placeholder={t('transactions.add_transaction_form.security_code')}
                     />
                     <button
                       type='button'
                       onClick={handleSecurityCodeVerification}
                       className='px-3 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-1 focus:ring-blue-500'
                     >
-                      Enable
+                      {t('transactions.add_transaction_form.enable')}
                     </button>
                   </div>
                   {securityCodeError && (
@@ -1135,7 +1115,7 @@ export default function AddTransaction() {
                       value={manualCommission}
                       onChange={e => setManualCommission(e.target.value)}
                       className='flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500'
-                      placeholder='Commission %'
+                      placeholder={t('transactions.add_transaction_form.commission_percent')}
                     />
                     <button
                       type='button'
@@ -1148,10 +1128,10 @@ export default function AddTransaction() {
                       }}
                       className='px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200'
                     >
-                      Disable
+                      {t('transactions.add_transaction_form.disable')}
                     </button>
                   </div>
-                  <p className='text-xs text-gray-500'>Overrides automatic PSP commission rate</p>
+                  <p className='text-xs text-gray-500'>{t('transactions.add_transaction_form.commission_override_info')}</p>
                 </div>
               )}
             </div>
@@ -1159,13 +1139,13 @@ export default function AddTransaction() {
             {/* Company Information Card */}
             <UnifiedCard
               header={{
-                title: "Company Information",
-                description: "Select the company for this transaction"
+                title: t('transactions.add_transaction_form.company_information'),
+                description: t('transactions.add_transaction_form.company_information_desc')
               }}
             >
               <div className='space-y-2'>
                 <label className='block text-sm font-medium text-gray-700'>
-                  Company
+                  {t('transactions.add_transaction_form.company')}
                 </label>
                 <div className='relative'>
                   <Building className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10' />
@@ -1175,7 +1155,7 @@ export default function AddTransaction() {
                     className='w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white appearance-none cursor-pointer'
                     disabled={!dropdownsLoaded}
                   >
-                    <option value=''>{dropdownsLoaded ? 'Select Company' : 'Loading...'}</option>
+                    <option value=''>{dropdownsLoaded ? t('transactions.add_transaction_form.select_company') : t('transactions.add_transaction_form.loading')}</option>
                     {dropdownOptions.company && dropdownOptions.company.length > 0 ? (
                       dropdownOptions.company.map(option => (
                         <option key={option.id} value={option.value}>
@@ -1196,13 +1176,13 @@ export default function AddTransaction() {
             {/* Additional Information Card */}
             <UnifiedCard
               header={{
-                title: "Additional Information",
-                description: "Optional notes and comments"
+                title: t('transactions.add_transaction_form.additional_information'),
+                description: t('transactions.add_transaction_form.additional_information_desc')
               }}
             >
               <div className='space-y-2'>
                 <label className='block text-sm font-medium text-gray-700'>
-                  Transaction Notes
+                  {t('transactions.add_transaction_form.transaction_notes')}
                 </label>
                 <div className='relative'>
                   <MessageSquare className='absolute left-3 top-3 h-4 w-4 text-gray-400' />
@@ -1210,13 +1190,13 @@ export default function AddTransaction() {
                     value={formData.notes}
                     onChange={e => handleInputChange('notes', e.target.value)}
                     className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white resize-none'
-                    placeholder='Enter any additional notes or comments about this transaction'
+                    placeholder={t('transactions.add_transaction_form.notes_placeholder')}
                     rows={4}
                   />
                 </div>
                 <div className='flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-2 rounded-lg'>
                   <Info className='h-4 w-4 text-gray-500' />
-                  <span>Optional notes to help track transaction details</span>
+                  <span>{t('transactions.add_transaction_form.notes_info')}</span>
                 </div>
               </div>
             </UnifiedCard>
@@ -1227,8 +1207,8 @@ export default function AddTransaction() {
                 variant="outlined"
                 className="border-amber-200 bg-amber-50"
                 header={{
-                  title: "Exchange Rates Required",
-                  description: "Foreign currency transactions require exchange rates"
+                  title: t('transactions.add_transaction_form.exchange_rates_required'),
+                  description: t('transactions.add_transaction_form.exchange_rates_desc')
                 }}
               >
                 <div className='space-y-4'>
@@ -1236,10 +1216,10 @@ export default function AddTransaction() {
                     <AlertTriangle className='h-5 w-5 text-amber-600 flex-shrink-0' />
                     <div>
                       <p className='text-amber-800 font-medium'>
-                        Exchange rates are required for foreign currency transactions
+                        {t('transactions.add_transaction_form.exchange_rates_warning')}
                       </p>
                       <p className='text-amber-700 text-sm mt-1'>
-                        Please enter the exchange rates for the selected date to ensure accurate conversions
+                        {t('transactions.add_transaction_form.exchange_rates_warning_desc')}
                       </p>
                     </div>
                   </div>
@@ -1248,7 +1228,7 @@ export default function AddTransaction() {
                     {formData.currency === 'EUR' && (
                       <div className='space-y-2'>
                         <label className='block text-sm font-medium text-gray-700'>
-                          EUR to TL Rate
+                          {t('transactions.add_transaction_form.eur_to_tl_rate')}
                         </label>
                         <div className='relative'>
                           <TrendingUp className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
@@ -1259,12 +1239,12 @@ export default function AddTransaction() {
                             value={formData.eur_rate}
                             onChange={e => handleInputChange('eur_rate', e.target.value)}
                             className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white'
-                            placeholder='0.0000'
+                            placeholder={t('transactions.add_transaction_form.rate_placeholder')}
                             required={formData.currency === 'EUR'}
                           />
                         </div>
                         <p className='text-sm text-gray-600 bg-gray-50 p-2 rounded-lg'>
-                          Auto-fetched when possible. If no rate, it defaults to 0.00.
+                          {t('transactions.add_transaction_form.rate_auto_fetch_info')}
                         </p>
                       </div>
                     )}
@@ -1272,7 +1252,7 @@ export default function AddTransaction() {
                     {formData.currency === 'USD' && (
                       <div className='space-y-2'>
                         <label className='block text-sm font-medium text-gray-700'>
-                          USD to TL Rate
+                          {t('transactions.add_transaction_form.usd_to_tl_rate')}
                         </label>
                         <div className='flex gap-2'>
                           <div className='relative flex-1'>
@@ -1284,7 +1264,7 @@ export default function AddTransaction() {
                               value={formData.usd_rate}
                               onChange={e => handleInputChange('usd_rate', e.target.value)}
                               className='w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 bg-white'
-                              placeholder='0.0000'
+                              placeholder={t('transactions.add_transaction_form.rate_placeholder')}
                             />
                           </div>
                           <UnifiedButton
@@ -1294,7 +1274,7 @@ export default function AddTransaction() {
                             onClick={() => setShowCurrencyModal(true)}
                             icon={<DollarSign className="h-4 w-4" />}
                           >
-                            Get Rate
+                            {t('transactions.add_transaction_form.get_rate')}
                           </UnifiedButton>
                           <UnifiedButton
                             type='button'
@@ -1303,18 +1283,18 @@ export default function AddTransaction() {
                             onClick={applyUsdRate}
                             icon={<RefreshCw className="h-4 w-4" />}
                           >
-                            Apply
+                            {t('transactions.add_transaction_form.apply')}
                           </UnifiedButton>
                         </div>
                         {convertedAmountTL && (
                           <div className='p-3 bg-green-50 border border-green-200 rounded-lg'>
                             <p className='text-sm text-green-800'>
-                              <strong>Converted TL Amount:</strong> {convertedAmountTL}
+                              <strong>{t('transactions.add_transaction_form.converted_tl_amount')}:</strong> {convertedAmountTL}
                             </p>
                           </div>
                         )}
                         <p className='text-sm text-gray-600 bg-gray-50 p-2 rounded-lg'>
-                          Auto-fetched when possible. If no rate, it defaults to 0.00.
+                          {t('transactions.add_transaction_form.rate_auto_fetch_info')}
                         </p>
                       </div>
                     )}
@@ -1326,7 +1306,7 @@ export default function AddTransaction() {
                       <div className='flex items-center gap-3'>
                         <Info className='h-5 w-5 text-blue-600 flex-shrink-0' />
                         <div>
-                          <p className='text-blue-800 font-medium'>Rate Validation</p>
+                          <p className='text-blue-800 font-medium'>{t('transactions.add_transaction_form.rate_validation')}</p>
                           <p className='text-blue-700 text-sm'>{rateValidationMessage}</p>
                         </div>
                       </div>
@@ -1347,7 +1327,7 @@ export default function AddTransaction() {
                   className="flex-1"
                   icon={<X className="h-4 w-4" />}
                 >
-                  Cancel
+                  {t('transactions.add_transaction_form.cancel')}
                 </UnifiedButton>
                 <UnifiedButton
                   type='submit'
@@ -1358,7 +1338,7 @@ export default function AddTransaction() {
                   className="flex-1"
                   icon={<Save className="h-4 w-4" />}
                 >
-                  {submitting ? 'Adding Transaction...' : 'Add Transaction'}
+                  {submitting ? t('transactions.add_transaction_form.adding_transaction') : t('transactions.add_transaction_form.add_transaction')}
                 </UnifiedButton>
               </div>
             </UnifiedCard>
@@ -1367,8 +1347,8 @@ export default function AddTransaction() {
         {/* Settings Link */}
         <UnifiedCard
           header={{
-            title: "Dropdown Management",
-            description: "Customize your dropdown options"
+            title: t('transactions.add_transaction_form.dropdown_management'),
+            description: t('transactions.add_transaction_form.dropdown_management_desc')
           }}
         >
           <div className='text-center space-y-4'>
@@ -1379,18 +1359,17 @@ export default function AddTransaction() {
               icon={<Settings className="h-4 w-4" />}
               className="mx-auto"
             >
-              Manage Dropdown Options
+              {t('transactions.add_transaction_form.manage_dropdown_options')}
             </UnifiedButton>
             <div className='p-4 bg-blue-50 border border-blue-200 rounded-lg'>
               <div className='flex items-start gap-3 text-left'>
                 <Info className='h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5' />
                 <div className='text-sm'>
                   <p className='font-medium text-blue-900 mb-1'>
-                    Need to customize dropdown options?
+                    {t('transactions.add_transaction_form.customize_dropdown_title')}
                   </p>
                   <p className='text-blue-800'>
-                    Add your own payment methods, companies, or PSPs by clicking the button above. 
-                    This will take you to the settings page where you can manage all dropdown options.
+                    {t('transactions.add_transaction_form.customize_dropdown_desc')}
                   </p>
                 </div>
               </div>

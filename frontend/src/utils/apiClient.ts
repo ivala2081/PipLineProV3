@@ -114,28 +114,56 @@ export class ApiClient {
    */
   private handleError(error: any, url: string): Error {
     if (error.name === 'AbortError') {
-      return new Error(`Request timeout: ${url}`);
+      return new Error('Request timeout. Please try again.');
     }
 
     if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-      return new Error('Bağlantı hatası. Lütfen internet bağlantınızı kontrol edin.');
+      return new Error('Connection error. Please check your internet connection and try again.');
     }
 
     if (error.status === 401 || error.status === 403) {
       // Use the new resilient handler
       this.handleUnauthorized(url, error.status);
-      return new Error('Yetki hatası. Lütfen tekrar giriş yapın.');
+      return new Error('Your session has expired. Please log in again.');
     }
 
     if (error.status >= 500) {
-      return new Error('Sunucu hatası. Lütfen daha sonra tekrar deneyin.');
+      if (error.status === 502) {
+        return new Error('Server is temporarily unavailable. Please try again in a few moments.');
+      }
+      if (error.status === 503) {
+        return new Error('Service is temporarily unavailable. Please try again later.');
+      }
+      if (error.status === 504) {
+        return new Error('Request took too long. Please try again.');
+      }
+      return new Error('Server error. Please try again later or contact support if the problem persists.');
     }
 
     if (error.status === 404) {
-      return new Error('İstenen kaynak bulunamadı.');
+      return new Error('The requested resource was not found.');
+    }
+    
+    if (error.status === 400) {
+      // Try to extract validation error message
+      const errorData = error.data || error.response?.data || {};
+      const errorMessage = errorData.message || errorData.error || errorData.detail;
+      if (errorMessage) {
+        return new Error(errorMessage);
+      }
+      return new Error('Invalid request. Please check your input and try again.');
     }
 
-    return error instanceof Error ? error : new Error(error.message || 'Bilinmeyen bir hata oluştu.');
+    if (error.status === 422) {
+      const errorData = error.data || error.response?.data || {};
+      const errorMessage = errorData.message || errorData.error || errorData.detail;
+      if (errorMessage) {
+        return new Error(errorMessage);
+      }
+      return new Error('Validation error. Please check your input and try again.');
+    }
+
+    return error instanceof Error ? error : new Error(error.message || 'An unexpected error occurred. Please try again.');
   }
 
   /**
@@ -152,6 +180,11 @@ export class ApiClient {
       const controller = this.createTimeoutController(opts.timeout);
 
       try {
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:get:start',message:'API GET start',data:{url,timeout:opts.timeout,retries:opts.retries,hasCsrf:!!localStorage.getItem('csrf_token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
         const response = await fetch(url, {
           method: 'GET',
           credentials: 'include',
@@ -166,6 +199,11 @@ export class ApiClient {
           if (response.status === 401 || response.status === 403) {
             this.handleUnauthorized(url, response.status);
           }
+          // #region agent log (dev only)
+          if (import.meta.env.DEV) {
+            fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:get:non-ok',message:'API GET non-ok response',data:{url,status:response.status,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          }
+          // #endregion
           const error: any = new Error(`HTTP error! status: ${response.status}`);
           error.status = response.status;
           throw error;
@@ -196,6 +234,11 @@ export class ApiClient {
           ok: response.ok, // Include ok status for compatibility
         };
       } catch (error: any) {
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:get:error',message:'API GET threw',data:{url,errorMessage:error?.message||String(error),name:error?.name,status:error?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C'})}).catch(()=>{});
+        }
+        // #endregion
         throw this.handleError(error, url);
       }
     }, opts);
@@ -218,6 +261,11 @@ export class ApiClient {
       try {
         // CSRF token'i localStorage'dan al
         const csrfToken = localStorage.getItem('csrf_token');
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:post:start',message:'API POST start',data:{url,timeout:opts.timeout,retries:opts.retries,hasCsrf:!!csrfToken,bodyType:typeof body},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
         
         const response = await fetch(url, {
           method: 'POST',
@@ -249,6 +297,11 @@ export class ApiClient {
           if (response.status === 401 || response.status === 403) {
             this.handleUnauthorized(url, response.status);
           }
+          // #region agent log (dev only)
+          if (import.meta.env.DEV) {
+            fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:post:non-ok',message:'API POST non-ok response',data:{url,status:response.status,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          }
+          // #endregion
           
           // Return error response with data so caller can access error message
           return {
@@ -269,6 +322,11 @@ export class ApiClient {
           ok: true,
         };
       } catch (error: any) {
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:post:error',message:'API POST threw',data:{url,errorMessage:error?.message||String(error),name:error?.name,status:error?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C'})}).catch(()=>{});
+        }
+        // #endregion
         throw this.handleError(error, url);
       }
     }, opts);
@@ -348,6 +406,7 @@ export class ApiClient {
    */
   async delete<T>(
     endpoint: string,
+    body?: any,
     options: ApiClientOptions = {},
   ): Promise<ApiResponse<T>> {
     const opts = { ...this.defaultOptions, ...options };
@@ -367,6 +426,7 @@ export class ApiClient {
             'Content-Type': 'application/json',
             ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
           },
+          ...(body ? { body: JSON.stringify(body) } : {}),
           signal: controller.signal,
         });
 

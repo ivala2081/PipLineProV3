@@ -199,20 +199,71 @@ export class ErrorHandler {
    * Get user-friendly error message
    */
   public getUserFriendlyMessage(error: PipLineError): string {
-    switch (error.code) {
-      case 'NETWORK_ERROR':
-        return 'Please check your internet connection and try again.';
-      case 'AUTH_ERROR':
-        return 'Please log in to continue.';
-      case 'PERMISSION_ERROR':
-        return 'You do not have permission to perform this action.';
-      case 'VALIDATION_ERROR':
-        return error.message;
-      case 'COMPONENT_ERROR':
-        return 'Something went wrong. Please refresh the page.';
-      default:
-        return error.message || 'An unexpected error occurred. Please try again.';
+    // Map technical error codes to user-friendly messages
+    const errorMessages: Record<string, string> = {
+      'NETWORK_ERROR': 'Unable to connect to the server. Please check your internet connection and try again.',
+      'HTTP_401': 'Your session has expired. Please log in again.',
+      'HTTP_403': 'You do not have permission to perform this action.',
+      'HTTP_404': 'The requested resource was not found.',
+      'HTTP_500': 'A server error occurred. Please try again later.',
+      'HTTP_502': 'The server is temporarily unavailable. Please try again in a few moments.',
+      'HTTP_503': 'The service is temporarily unavailable. Please try again later.',
+      'HTTP_504': 'The request took too long. Please try again.',
+      'VALIDATION_ERROR': 'Please check your input and try again.',
+      'AUTH_ERROR': 'Authentication failed. Please log in again.',
+      'PERMISSION_ERROR': 'You do not have permission to perform this action.',
+      'TIMEOUT_ERROR': 'The request took too long. Please try again.',
+      'COMPONENT_ERROR': 'Something went wrong. Please refresh the page.',
+      'UNKNOWN_ERROR': 'An unexpected error occurred. Please try again.',
+    };
+
+    // Check for specific error patterns in message
+    const message = error.message || '';
+    
+    // Network-related errors
+    if (message.includes('Failed to fetch') || message.includes('NetworkError') || message.includes('network')) {
+      return 'Connection problem. Please check your internet connection and try again.';
     }
+    
+    // Timeout errors
+    if (message.includes('timeout') || message.includes('Timeout')) {
+      return 'The request took too long. Please try again.';
+    }
+    
+    // Validation errors - return as-is if already user-friendly
+    if (message.includes('validation') || message.includes('invalid') || message.includes('required')) {
+      // If it's a simple validation message, return it; otherwise provide generic
+      if (message.length < 100 && !message.includes('Error') && !message.includes('Exception')) {
+        return message;
+      }
+      return 'Please check your input and try again.';
+    }
+    
+    // Database errors (user-friendly)
+    if (message.includes('database') || message.includes('SQL') || message.includes('constraint')) {
+      return 'A data error occurred. Please check your input or contact support if the problem persists.';
+    }
+    
+    // If we have a mapped error code, use it
+    if (error.code && errorMessages[error.code]) {
+      return errorMessages[error.code];
+    }
+    
+    // If status code is available, map it
+    if (error.status) {
+      const statusMessage = errorMessages[`HTTP_${error.status}`];
+      if (statusMessage) {
+        return statusMessage;
+      }
+    }
+
+    // Return the original message if it's already user-friendly, otherwise return generic message
+    const isTechnical = /(error|exception|failed|undefined|null|NaN|stack|trace)/i.test(message);
+    if (!isTechnical && message.length < 200 && message.trim().length > 0) {
+      return message;
+    }
+    
+    return 'An unexpected error occurred. Please try again or contact support if the problem persists.';
   }
 
   /**

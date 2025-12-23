@@ -37,27 +37,27 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className = 
     switch (status) {
       case 'connected': 
         return {
-          bg: 'bg-gradient-to-r from-emerald-50 to-green-50',
-          border: 'border-emerald-200',
-          text: 'text-emerald-700',
-          dot: 'bg-emerald-500',
-          shadow: 'shadow-emerald-100'
+          bg: 'bg-gray-50',
+          border: 'border-gray-200',
+          text: 'text-gray-700',
+          dot: 'bg-gray-600',
+          shadow: 'shadow-gray-100'
         };
       case 'disconnected': 
         return {
-          bg: 'bg-gradient-to-r from-red-50 to-rose-50',
-          border: 'border-red-200',
-          text: 'text-red-700',
-          dot: 'bg-red-500',
-          shadow: 'shadow-red-100'
+          bg: 'bg-gray-50',
+          border: 'border-gray-200',
+          text: 'text-gray-700',
+          dot: 'bg-gray-600',
+          shadow: 'shadow-gray-100'
         };
       case 'connecting': 
         return {
-          bg: 'bg-gradient-to-r from-amber-50 to-yellow-50',
-          border: 'border-amber-200',
-          text: 'text-amber-700',
-          dot: 'bg-amber-500',
-          shadow: 'shadow-amber-100'
+          bg: 'bg-gray-50',
+          border: 'border-gray-200',
+          text: 'text-gray-700',
+          dot: 'bg-gray-600',
+          shadow: 'shadow-gray-100'
         };
     }
   };

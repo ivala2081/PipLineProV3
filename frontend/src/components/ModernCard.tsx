@@ -38,28 +38,28 @@ export const ModernCard: React.FC<ModernCardProps> = ({
       trend: 'text-gray-600'
     },
     green: {
-      gradient: 'from-emerald-500/10 to-emerald-600/5',
-      border: 'border-emerald-200/60',
-      icon: 'text-emerald-600 bg-emerald-100',
-      trend: 'text-emerald-600'
+      gradient: 'from-gray-500/10 to-gray-600/5',
+      border: 'border-gray-200/60',
+      icon: 'text-gray-600 bg-gray-100',
+      trend: 'text-gray-600'
     },
     red: {
-      gradient: 'from-red-500/10 to-red-600/5',
-      border: 'border-red-200/60',
-      icon: 'text-red-600 bg-red-100',
-      trend: 'text-red-600'
+      gradient: 'from-gray-500/10 to-gray-600/5',
+      border: 'border-gray-200/60',
+      icon: 'text-gray-600 bg-gray-100',
+      trend: 'text-gray-600'
     },
     purple: {
-      gradient: 'from-purple-500/10 to-purple-600/5',
-      border: 'border-purple-200/60',
-      icon: 'text-purple-600 bg-purple-100',
-      trend: 'text-purple-600'
+      gradient: 'from-gray-500/10 to-gray-600/5',
+      border: 'border-gray-200/60',
+      icon: 'text-gray-600 bg-gray-100',
+      trend: 'text-gray-600'
     },
     amber: {
-      gradient: 'from-amber-500/10 to-amber-600/5',
-      border: 'border-amber-200/60',
-      icon: 'text-amber-600 bg-amber-100',
-      trend: 'text-amber-600'
+      gradient: 'from-gray-500/10 to-gray-600/5',
+      border: 'border-gray-200/60',
+      icon: 'text-gray-600 bg-gray-100',
+      trend: 'text-gray-600'
     }
   };
 
@@ -124,8 +124,8 @@ export const ModernCard: React.FC<ModernCardProps> = ({
           <div className={`
             flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium
             ${trend.isPositive !== false 
-              ? 'bg-emerald-100 text-emerald-700' 
-              : 'bg-red-100 text-red-700'
+              ? 'bg-gray-100 text-gray-700' 
+              : 'bg-gray-100 text-gray-700'
             }
           `}>
             <span className={trend.isPositive !== false ? '↗' : '↘'}>

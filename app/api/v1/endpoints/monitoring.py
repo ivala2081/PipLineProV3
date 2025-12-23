@@ -13,6 +13,8 @@ from app.services.monitoring_service import (
 from app.services.rate_limit_service import get_rate_limit_service
 from app.utils.unified_error_handler import handle_api_errors
 from app.utils.unified_logger import get_logger
+import json
+import os
 
 logger = get_logger("MonitoringAPI")
 
@@ -204,3 +206,40 @@ def get_top_violators():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@monitoring_api.route('/client-log', methods=['POST'])
+@handle_api_errors
+def ingest_client_log():
+    """
+    Receive frontend debug logs and append as NDJSON lines to .cursor/debug.log.
+    This avoids browser mixed-content/CORS issues by using same-origin requests.
+    """
+    payload = request.get_json(silent=True) or {}
+
+    # Whitelist keys (avoid secrets/PII). Keep data small.
+    safe = {
+        'sessionId': payload.get('sessionId'),
+        'runId': payload.get('runId'),
+        'hypothesisId': payload.get('hypothesisId'),
+        'location': payload.get('location'),
+        'message': payload.get('message'),
+        'timestamp': payload.get('timestamp'),
+        'data': payload.get('data') if isinstance(payload.get('data'), (dict, list, str, int, float, bool, type(None))) else None,
+    }
+
+    # Cap oversized strings to keep log readable
+    for k in ('sessionId', 'runId', 'hypothesisId', 'location', 'message'):
+        if isinstance(safe.get(k), str) and len(safe[k]) > 500:
+            safe[k] = safe[k][:500]
+
+    try:
+        log_path = os.path.abspath(os.path.join(os.getcwd(), '.cursor', 'debug.log'))
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(safe, ensure_ascii=False) + '\n')
+    except Exception as e:
+        logger.error(f"Failed to append client log: {e}")
+        return jsonify({'success': False, 'error': 'failed_to_write_log'}), 500
+
+    return jsonify({'success': True}), 200

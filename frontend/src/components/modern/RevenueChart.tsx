@@ -23,6 +23,7 @@ interface RevenueChartProps {
   data?: any[];
   type?: 'line' | 'area' | 'bar' | 'pie';
   height?: number;
+  showWithCommission?: boolean; // Toggle to show net cash with/without commission
 }
 
 // Mock data removed - use real data from API
@@ -37,7 +38,8 @@ const pieData = [
 export const RevenueChart: React.FC<RevenueChartProps> = ({ 
   data = [], 
   type = 'area',
-  height = 300 
+  height = 300,
+  showWithCommission = false
 }) => {
   // Transform API data to chart format
   const chartData = data && data.length > 0 ? data.map(item => {
@@ -68,12 +70,22 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({
       formattedDate = item.month;
     }
     
+    // Use net_cash_after_commission_usd if showWithCommission is true, otherwise use net_cash_usd
+    const netCashValue = showWithCommission 
+      ? (item.net_cash_after_commission_usd ?? item.net_cash_usd ?? item.net_cash ?? item.amount ?? 0)
+      : (item.net_cash_usd ?? item.net_cash ?? item.amount ?? item.revenue ?? item.total_amount ?? 0);
+    
     return {
       month: formattedDate,
-      revenue: item.amount || item.revenue || item.total_amount || 0,
-      amount: item.amount || item.revenue || item.total_amount || 0,
-      deposits: item.deposits || 0,
-      withdrawals: item.withdrawals || 0,
+      revenue: netCashValue,
+      amount: netCashValue,
+      net_cash_usd: showWithCommission 
+        ? (item.net_cash_after_commission_usd ?? item.net_cash_usd ?? 0)
+        : (item.net_cash_usd ?? item.net_cash ?? item.amount ?? 0),
+      net_cash_after_commission_usd: item.net_cash_after_commission_usd ?? 0,
+      deposits: item.deposits_usd || item.deposits || 0,
+      withdrawals: item.withdrawals_usd || item.withdrawals || 0,
+      commissions: item.commissions_usd || item.commissions || 0,
       transactions: item.transactions || item.transaction_count || 0,
       transaction_count: item.transaction_count || item.transactions || 0,
       clients: item.clients || 0,
@@ -98,9 +110,9 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({
   });
 
 const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('tr-TR', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'TRY',
+      currency: 'USD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
@@ -123,11 +135,21 @@ const formatCurrency = (value: number) => {
             
             <div className="border-t border-gray-100 pt-2 space-y-1">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Net Revenue:</span>
+                <span className="text-sm text-gray-600">
+                  {showWithCommission ? 'Net Cash (USD) After Commission:' : 'Net Cash (USD):'}
+                </span>
                 <span className={`font-semibold ${isZero ? 'text-gray-500' : amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {isZero ? '₺0' : formatCurrency(amount)}
+                  {isZero ? '$0' : formatCurrency(amount)}
                 </span>
               </div>
+              {data.commissions !== undefined && data.commissions > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Commissions:</span>
+                  <span className={`text-sm font-medium ${isZero ? 'text-gray-500' : 'text-red-600'}`}>
+                    -{formatCurrency(data.commissions)}
+                  </span>
+                </div>
+              )}
               
               {data.deposits !== undefined && (
                 <div className="flex justify-between items-center">
@@ -325,11 +347,21 @@ const formatCurrency = (value: number) => {
                       
                       <div className="border-t border-gray-100 pt-2 space-y-1">
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-600">Net Cash:</span>
+                          <span className="text-sm text-gray-600">
+                            {showWithCommission ? 'Net Cash (USD) After Commission:' : 'Net Cash (USD):'}
+                          </span>
                           <span className="font-semibold text-blue-600">
-                            {formatCurrency(data.amount || 0)}
+                            {formatCurrency(data.net_cash_usd || data.amount || 0)}
                           </span>
                         </div>
+                        {data.commissions !== undefined && data.commissions > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Commissions:</span>
+                            <span className="text-sm font-medium text-gray-700">
+                              -{formatCurrency(data.commissions)}
+                            </span>
+                          </div>
+                        )}
                         
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-600">Transactions:</span>

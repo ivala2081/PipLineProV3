@@ -25,9 +25,14 @@ import { SectionHeader } from '../ui/SectionHeader';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import { Calendar, BarChart3, TrendingUp, LineChart } from 'lucide-react';
 import type { TimeRange, ViewType, ChartPeriod, FinancialPeriodData } from '../../types/dashboard.types';
+import PageLayout from '../layout/PageLayout';
 
 const LazyRecentActivityFeed = lazy(() =>
   import('./RecentActivityFeed').then((module) => ({ default: module.RecentActivityFeed })),
+);
+
+const LazyCryptoWalletBalancesCard = lazy(() =>
+  import('./CryptoWalletBalancesCard').then((module) => ({ default: module.CryptoWalletBalancesCard })),
 );
 
 interface ModernDashboardProps {
@@ -76,6 +81,7 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({ user }) => {
   const [viewType, setViewType] = useState<ViewType>('net');
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('monthly');
   const [showZeroValues, setShowZeroValues] = useState(true);
+  const [showWithCommission, setShowWithCommission] = useState(false); // Toggle for showing net cash with/without commission
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
@@ -476,30 +482,32 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({ user }) => {
   // Component error UI - show if there's a component-level error
   if (componentError) {
     return (
-      <main className="flex-1 bg-gradient-to-br from-slate-50 via-white to-slate-100 min-h-screen">
-        <div className="px-6 py-8">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <Card className="w-full max-w-md border-0 shadow-2xl bg-white/80 backdrop-blur-sm">
-              <CardContent className="p-8 text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <span className="text-2xl">⚠️</span>
-                </div>
-                <h2 className="text-2xl font-semibold text-slate-900 mb-3">Component Error</h2>
-                <p className="text-slate-600 mb-4">{componentError.message}</p>
-                <Button
-                  onClick={() => {
-                    setComponentError(null);
-                    window.location.reload();
-                  }}
-                  className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 hover:scale-105"
-                >
-                  Reload Page
-                </Button>
-              </CardContent>
-            </Card>
+      <PageLayout theme="slate" minHeightScreen={true} className="flex-1">
+        <main className="flex-1 min-h-screen">
+          <div className="px-6 py-8">
+            <div className="flex items-center justify-center min-h-[400px]">
+              <Card className="w-full max-w-md border-0 shadow-2xl bg-white/80 backdrop-blur-sm">
+                <CardContent className="p-8 text-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <span className="text-2xl">⚠️</span>
+                  </div>
+                  <h2 className="text-2xl font-semibold text-slate-900 mb-3">Component Error</h2>
+                  <p className="text-slate-600 mb-4">{componentError.message}</p>
+                  <Button
+                    onClick={() => {
+                      setComponentError(null);
+                      window.location.reload();
+                    }}
+                    className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 hover:scale-105"
+                  >
+                    Reload Page
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </PageLayout>
     );
   }
 
@@ -550,28 +558,30 @@ const ModernDashboard: React.FC<ModernDashboardProps> = ({ user }) => {
   // Error UI - only show if we have an error and no data at all
   if (error && !dashboardData && !financialPerformanceData) {
     return (
-      <main className="flex-1 bg-gradient-to-br from-slate-50 via-white to-slate-100 min-h-screen">
-        <div className="px-6 py-8">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <Card className="w-full max-w-md border-0 shadow-2xl bg-white/80 backdrop-blur-sm">
-              <CardContent className="p-8 text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <span className="text-2xl">⚠️</span>
-                </div>
-                <h2 className="text-2xl font-semibold text-slate-900 mb-3">Error Loading Dashboard</h2>
-                <p className="text-slate-600 mb-6">{error}</p>
-                <Button
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 hover:scale-105"
-                >
-                  Try Again
-                </Button>
-              </CardContent>
-            </Card>
+      <PageLayout theme="slate" minHeightScreen={true} className="flex-1">
+        <main className="flex-1 min-h-screen">
+          <div className="px-6 py-8">
+            <div className="flex items-center justify-center min-h-[400px]">
+              <Card className="w-full max-w-md border-0 shadow-2xl bg-white/80 backdrop-blur-sm">
+                <CardContent className="p-8 text-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <span className="text-2xl">⚠️</span>
+                  </div>
+                  <h2 className="text-2xl font-semibold text-slate-900 mb-3">Error Loading Dashboard</h2>
+                  <p className="text-slate-600 mb-6">{error}</p>
+                  <Button
+                    onClick={handleRefresh}
+                    disabled={loading}
+                    className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-lg font-medium transition-all duration-200 hover:scale-105"
+                  >
+                    Try Again
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </PageLayout>
     );
   }
 
@@ -600,18 +610,6 @@ return (
             <SummaryStatsBar
               stats={quickStats}
               loading={loading && !dashboardData}
-              onStatClick={(index) => {
-                if (quickStats[index]) {
-                  const stat = quickStats[index];
-                  if (stat.label.includes('Cash')) {
-                    navigate('/analytics/revenue');
-                  } else if (stat.label.includes('Clients')) {
-                    navigate('/clients');
-                  } else if (stat.label.includes('Transactions')) {
-                    navigate('/transactions');
-                  }
-                }
-              }}
             />
           )}
 
@@ -657,6 +655,21 @@ return (
                         <span>{showZeroValues ? 'With Zeros' : 'Without Zeros'}</span>
                       </button>
                     </div>
+
+                    {/* Commission Toggle */}
+                    <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+                      <button
+                        onClick={() => setShowWithCommission(!showWithCommission)}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 flex items-center gap-2 ${
+                          showWithCommission
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                        }`}
+                        title={showWithCommission ? 'Show Net Cash without commission' : 'Show Net Cash with commission'}
+                      >
+                        <span>{showWithCommission ? 'With Commission' : 'Without Commission'}</span>
+                      </button>
+                    </div>
                   </>
                 }
               />
@@ -664,7 +677,7 @@ return (
             <CardContent>
               <div className="h-96 chart-container">
                 {chartData.length > 0 ? (
-                  <RevenueChart data={chartData} type="bar" height={350} />
+                  <RevenueChart data={chartData} type="bar" height={350} showWithCommission={showWithCommission} />
                 ) : (
                   <div className="flex items-center justify-center h-full text-gray-500">
                     <p>Chart verisi yükleniyor...</p>
@@ -691,6 +704,7 @@ return (
               onToday={() => setSelectedDay(new Date())}
               formatDate={formatDayDate}
               navigatePath="/analytics/revenue?period=daily"
+              showWithCommission={showWithCommission}
             />
 
             {/* Monthly Card */}
@@ -708,6 +722,7 @@ return (
               onToday={() => setSelectedMonth(new Date())}
               formatDate={formatMonthYear}
               navigatePath="/analytics/revenue?period=monthly"
+              showWithCommission={showWithCommission}
             />
 
             {/* Total Card */}
@@ -724,6 +739,7 @@ return (
               onNext={() => {}}
               formatDate={() => 'All Time'}
               navigatePath="/analytics/revenue?period=annual"
+              showWithCommission={showWithCommission}
             />
           </div>
 
@@ -750,6 +766,26 @@ return (
                 navigate(`/transactions?highlight=${transactionId}`);
               }}
             />
+          </Suspense>
+
+          {/* Crypto Wallet Balances Card */}
+          <Suspense
+            fallback={
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="h-6 bg-gray-200 rounded w-32 animate-pulse"></div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="h-16 bg-gray-100 rounded-lg animate-pulse"></div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            }
+          >
+            <LazyCryptoWalletBalancesCard limit={5} />
           </Suspense>
         </div>
       </div>

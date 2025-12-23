@@ -64,7 +64,7 @@
   --business-transition-normal: 0.3s ease;
   --business-transition-slow: 0.5s ease;
   
-  /* Tailwind CSS Variables */
+  /* Tailwind CSS Variables - Light Theme */
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
   --card: 0 0% 100%;
@@ -87,6 +87,56 @@
   --radius: 0.5rem;
 }
 
+/* ===== DARK THEME CSS VARIABLES ===== */
+.dark {
+  /* Tailwind CSS Variables - Dark Theme */
+  --background: 222.2 47.4% 11.2%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 47.4% 11.2%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 47.4% 11.2%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 212.7 26.8% 83.9%;
+  
+  /* Business Colors - Dark Theme */
+  --business-primary: #3b82f6;
+  --business-primary-light: #60a5fa;
+  --business-primary-dark: #2563eb;
+  --business-secondary: #94a3b8;
+  --business-accent: #38bdf8;
+  
+  /* Status Colors - Dark Theme (slightly brighter) */
+  --business-success: #22c55e;
+  --business-warning: #fbbf24;
+  --business-danger: #f87171;
+  --business-info: #38bdf8;
+  
+  /* Gray Scale - Dark Theme */
+  --business-white: #0f172a;
+  --business-gray-50: #1e293b;
+  --business-gray-100: #334155;
+  --business-gray-200: #475569;
+  --business-gray-300: #64748b;
+  --business-gray-400: #94a3b8;
+  --business-gray-500: #cbd5e1;
+  --business-gray-600: #e2e8f0;
+  --business-gray-700: #f1f5f9;
+  --business-gray-800: #f8fafc;
+  --business-gray-900: #ffffff;
+}
+
 /* ===== GLOBAL RESET & BASE STYLES ===== */
 * {
   box-sizing: border-box;
@@ -99,7 +149,16 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+/* #region agent log */
+/* Instrumentation: Log CSS variable values on load */
+body::before {
+  content: '';
+  display: none;
+}
+/* #endregion */
 
 /* ===== PROFESSIONAL TYPOGRAPHY SYSTEM ===== */
 h1, h2, h3, h4, h5, h6 {
@@ -740,19 +799,9 @@ a:focus,
   h3 { font-size: 1.125rem; } /* 18px - was 24px */
 }
 
-/* ===== PROFESSIONAL LIGHT THEME ONLY ===== */
-/* Dark mode support removed to maintain consistent business appearance */
-/* All users will see the professional light theme regardless of system preference */
-
-/* Force light theme - Prevent system theme inheritance */
-html, body, #root, #root > * {
-  color-scheme: light only !important;
-}
-
-/* Ensure all components use light theme */
-* {
-  color-scheme: light only !important;
-}
+/* ===== THEME SUPPORT ===== */
+/* Theme switching is now supported via next-themes */
+/* System preference is respected, but can be overridden by user */
 
 /* ===== PROFESSIONAL SELECTION STYLES ===== */
 ::selection {
@@ -776,6 +825,19 @@ html, body, #root, #root > * {
 }
 
 ::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
 }
 

@@ -99,12 +99,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       category: 'Navigation'
     },
     {
-      id: 'nav-ledger',
-      title: 'Ledger',
-      description: 'View ledger',
+      id: 'nav-psp',
+      title: 'PSP',
+      description: 'View PSP ledger',
       icon: FileText,
-      action: () => navigate('/ledger'),
-      keywords: ['transactions', 'records'],
+      action: () => navigate('/psp'),
+      keywords: ['psp', 'transactions', 'records', 'ledger'],
       category: 'Navigation'
     },
     {

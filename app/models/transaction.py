@@ -36,8 +36,12 @@ class Transaction(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     
+    # Multi-tenancy: Organization relationship
+    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    
     # Enhanced database indexes for performance optimization
     __table_args__ = (
+        db.Index('idx_transaction_organization', 'organization_id'),
         # Single column indexes for frequently queried fields
         db.Index('idx_transaction_date', 'date'),
         db.Index('idx_transaction_client', 'client_name'),
@@ -68,6 +72,7 @@ class Transaction(db.Model):
     
     # Relationships
     user = db.relationship('User', backref=db.backref('transactions', lazy=True))
+    organization = db.relationship('Organization', backref=db.backref('transactions', lazy=True))
     
     @validates('client_name')
     def validate_client_name(self, key, value):

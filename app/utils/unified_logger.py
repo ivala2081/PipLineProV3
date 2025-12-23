@@ -28,8 +28,18 @@ try:
     HAS_CONCURRENT_HANDLER = True
 except ImportError:
     HAS_CONCURRENT_HANDLER = False
-    print("⚠️ concurrent-log-handler not installed. Install with: pip install concurrent-log-handler")
-    print("   Falling back to standard RotatingFileHandler (may cause issues on Windows)")
+    # Use safe print for Windows compatibility
+    try:
+        import sys
+        msg = "WARNING: concurrent-log-handler not installed. Install with: pip install concurrent-log-handler"
+        sys.stdout.buffer.write(msg.encode('utf-8'))
+        sys.stdout.buffer.write(b'\n')
+        msg2 = "   Falling back to standard RotatingFileHandler (may cause issues on Windows)"
+        sys.stdout.buffer.write(msg2.encode('utf-8'))
+        sys.stdout.buffer.write(b'\n')
+    except Exception:
+        print("WARNING: concurrent-log-handler not installed. Install with: pip install concurrent-log-handler")
+        print("   Falling back to standard RotatingFileHandler (may cause issues on Windows)")
 
 
 class JSONFormatter(logging.Formatter):
@@ -179,7 +189,14 @@ class UnifiedLogger:
                     backupCount=7,  # Keep 7 backup files
                     encoding='utf-8'
                 )
-                print("✅ Using ConcurrentRotatingFileHandler (Windows-safe)")
+                # Use safe print for Windows compatibility
+                try:
+                    import sys
+                    msg = "OK: Using ConcurrentRotatingFileHandler (Windows-safe)"
+                    sys.stdout.buffer.write(msg.encode('utf-8'))
+                    sys.stdout.buffer.write(b'\n')
+                except Exception:
+                    print("OK: Using ConcurrentRotatingFileHandler (Windows-safe)")
             else:
                 # Fallback to TimedRotatingFileHandler (may have issues on Windows)
                 main_file_handler = logging.handlers.TimedRotatingFileHandler(
@@ -191,7 +208,14 @@ class UnifiedLogger:
                     delay=True
                 )
                 if platform.system() == 'Windows':
-                    print("⚠️ Using TimedRotatingFileHandler on Windows - may cause file lock issues")
+                    # Use safe print for Windows compatibility
+                    try:
+                        import sys
+                        msg = "WARNING: Using TimedRotatingFileHandler on Windows - may cause file lock issues"
+                        sys.stdout.buffer.write(msg.encode('utf-8'))
+                        sys.stdout.buffer.write(b'\n')
+                    except Exception:
+                        print("WARNING: Using TimedRotatingFileHandler on Windows - may cause file lock issues")
             
             main_file_handler.setLevel(logging.INFO)
             main_file_handler.setFormatter(formatter)
@@ -246,7 +270,15 @@ class UnifiedLogger:
                 
         except Exception as e:
             # Use print since logger might not be available
-            print(f"Failed to setup file handler: {e}")
+            # Ensure UTF-8 encoding for error messages
+            try:
+                import sys
+                error_msg = f"Failed to setup file handler: {e}"
+                sys.stdout.buffer.write(error_msg.encode('utf-8'))
+                sys.stdout.buffer.write(b'\n')
+            except Exception:
+                # Fallback to ASCII-safe message
+                print(f"Failed to setup file handler: {str(e).encode('ascii', 'replace').decode('ascii')}")
     
     def info(self, message: str, extra_data: Optional[Dict[str, Any]] = None):
         """Log info message with optional structured data"""

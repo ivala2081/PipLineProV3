@@ -115,26 +115,51 @@ def validate_currency(currency: str) -> str:
     return None
 
 
-def validate_psp_name(psp: Optional[str]) -> str:
+def validate_psp_name(psp: Optional[str]) -> Optional[str]:
     """
     Validate and sanitize PSP (Payment Service Provider) name
-    - Must be alphanumeric with limited special characters
-    - Length 2-50 characters
+    - Very permissive validation - only strips whitespace and limits length
+    - Allows most characters to support various PSP naming conventions
+    - Length 1-100 characters (increased from 50)
     Returns sanitized PSP name or None if invalid (None is valid for optional PSP)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if not psp:
+        logger.debug("PSP validation: Empty/None value provided, returning None")
         return None  # PSP is optional
     
     psp_clean = str(psp).strip()
     
-    # Check length
-    if len(psp_clean) < 2 or len(psp_clean) > 50:
+    # If after stripping it's empty, return None
+    if not psp_clean:
+        logger.debug("PSP validation: Value is empty after stripping, returning None")
         return None
     
-    # Allow alphanumeric, spaces, hyphens, underscores
-    if not re.match(r'^[A-Za-z0-9\s\-_]+$', psp_clean):
+    # Very permissive length check - allow up to 100 characters
+    if len(psp_clean) < 1 or len(psp_clean) > 100:
+        logger.warning(f"PSP validation: Length check failed for '{psp_clean}' (length: {len(psp_clean)})")
         return None
     
+    # Very permissive validation - only block obviously dangerous characters
+    # Allow most printable characters except control characters and null bytes
+    # This allows #, spaces, Turkish characters, etc.
+    if '\x00' in psp_clean:
+        logger.warning(f"PSP validation: Null byte found in '{psp_clean}'")
+        return None
+    
+    # Remove any control characters but keep the rest
+    import string
+    # Keep printable characters and common whitespace
+    psp_clean = ''.join(char for char in psp_clean if char.isprintable() or char in string.whitespace)
+    psp_clean = psp_clean.strip()
+    
+    if not psp_clean:
+        logger.warning(f"PSP validation: After cleaning, value is empty")
+        return None
+    
+    logger.debug(f"PSP validation: Successfully validated '{psp_clean}'")
     return psp_clean
 
 

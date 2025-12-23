@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { ModernHeader } from './ModernHeader';
 import { UnifiedNavigation } from '../navigation/UnifiedNavigation';
-import { BreadcrumbNavigation } from '../navigation/BreadcrumbNavigation';
 import { Button } from '../ui/button';
 import { Menu } from 'lucide-react';
 
@@ -17,6 +16,17 @@ const ModernLayout: React.FC<ModernLayoutProps> = ({ children }) => {
   const { logout } = useAuth();
   const { state, setSidebarOpen, setMobileMenuOpen } = useNavigation();
 
+  // #region agent log
+  React.useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const sidebar = document.querySelector('[class*="sidebar"]') || document.querySelector('.lg\\:fixed');
+    if (sidebar) {
+      const computed = getComputedStyle(sidebar as HTMLElement);
+      fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ModernLayout.tsx:18',message:'Sidebar styles detected',data:{bgColor:computed.backgroundColor,color:computed.color,borderColor:computed.borderColor,width:computed.width},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    }
+  }, []);
+  // #endregion
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -28,7 +38,7 @@ const ModernLayout: React.FC<ModernLayoutProps> = ({ children }) => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }} className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       {/* Mobile menu overlay */}
       {state.mobileMenuOpen && (
         <div 
@@ -55,13 +65,8 @@ const ModernLayout: React.FC<ModernLayoutProps> = ({ children }) => {
           onLogout={handleLogout}
         />
 
-        {/* Breadcrumb Navigation */}
-        <div className="px-6 py-3 bg-white border-b border-gray-200">
-          <BreadcrumbNavigation />
-        </div>
-
         {/* Page content */}
-        <main className="min-h-[calc(100vh-7rem)] bg-gray-50">
+        <main className="min-h-[calc(100vh-7rem)] bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
           {children || <Outlet />}
         </main>
       </div>

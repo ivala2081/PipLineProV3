@@ -137,7 +137,7 @@ class IndexOptimizationService:
                 ('idx_audit_user_id', ['user_id']),  # Match model definition
                 ('idx_audit_timestamp', ['timestamp']),  # Match model definition
                 ('idx_audit_action', ['action']),  # Match model definition
-                ('idx_audit_log_user_timestamp', ['user_id', 'timestamp']),  # Composite for common queries
+                ('idx_audit_user_timestamp', ['user_id', 'timestamp']),  # Composite for common queries - matches model definition
             ],
             'user_session': [
                 ('idx_session_user_id', ['user_id']),

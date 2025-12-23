@@ -25,9 +25,13 @@ class TrustWallet(db.Model):
     last_sync_block = db.Column(db.Integer, default=0)
     last_sync_time = db.Column(db.DateTime)
     
+    # Multi-tenancy
+    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    
     # Relationships
     user = db.relationship('User', backref=db.backref('trust_wallets', lazy=True))
     transactions = db.relationship('TrustWalletTransaction', backref='wallet', lazy=True, cascade='all, delete-orphan')
+    organization = db.relationship('Organization', backref=db.backref('trust_wallets', lazy=True))
     
     # Indexes
     __table_args__ = (
@@ -35,6 +39,7 @@ class TrustWallet(db.Model):
         Index('idx_trust_wallet_network', 'network'),
         Index('idx_trust_wallet_active', 'is_active'),
         Index('idx_trust_wallet_created_by', 'created_by'),
+        Index('idx_trust_wallet_organization', 'organization_id'),
     )
     
     @validates('wallet_address')
@@ -128,6 +133,9 @@ class TrustWalletTransaction(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
+    # Multi-tenancy
+    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    
     # Indexes for performance
     __table_args__ = (
         Index('idx_trust_tx_hash', 'transaction_hash'),
@@ -142,6 +150,7 @@ class TrustWalletTransaction(db.Model):
         Index('idx_trust_tx_network', 'network'),
         Index('idx_trust_tx_wallet_timestamp', 'wallet_id', 'block_timestamp'),
         Index('idx_trust_tx_wallet_token', 'wallet_id', 'token_symbol'),
+        Index('idx_trust_tx_organization', 'organization_id'),
     )
     
     @validates('transaction_type')

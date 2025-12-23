@@ -341,9 +341,16 @@ def dashboard_stats():
                  func.abs(func.coalesce(Transaction.net_amount_try, Transaction.net_amount, Transaction.amount))),
                 else_=0
             )
-        ).label('total_withdrawals'),
-        func.count(func.distinct(Transaction.client_name)).label('unique_clients')
+        ).label('total_withdrawals')
     ).first()
+    
+    # CRITICAL FIX: Calculate unique clients separately, filtering out NULL and empty client_name values
+    unique_clients = base_query.filter(
+        Transaction.client_name.isnot(None),
+        Transaction.client_name != ''
+    ).with_entities(
+        func.count(func.distinct(Transaction.client_name))
+    ).scalar() or 0
     
     # Extract aggregated values
     total_transactions = int(stats.total_transactions or 0)
@@ -352,7 +359,6 @@ def dashboard_stats():
     total_net_amount = safe_decimal(stats.total_net_amount) if stats.total_net_amount else Decimal('0')
     total_deposits = safe_decimal(stats.total_deposits) if stats.total_deposits else Decimal('0')
     total_withdrawals = safe_decimal(stats.total_withdrawals) if stats.total_withdrawals else Decimal('0')
-    unique_clients = int(stats.unique_clients or 0)
     
     # Calculate previous period for comparison (optimized with aggregation)
     if start_date is not None and end_date is not None:
@@ -367,16 +373,24 @@ def dashboard_stats():
     # Get previous period stats with aggregation
     prev_stats = db.session.query(
         func.count(Transaction.id).label('total_transactions'),
-        func.sum(func.coalesce(Transaction.amount_try, Transaction.amount)).label('total_revenue'),
-        func.count(func.distinct(Transaction.client_name)).label('unique_clients')
+        func.sum(func.coalesce(Transaction.amount_try, Transaction.amount)).label('total_revenue')
     ).filter(
         Transaction.date >= prev_start_date.date(),
         Transaction.date < prev_end_date.date()
     ).first()
     
+    # CRITICAL FIX: Calculate previous period unique clients separately, filtering out NULL and empty client_name values
+    prev_clients = db.session.query(
+        func.count(func.distinct(Transaction.client_name))
+    ).filter(
+        Transaction.date >= prev_start_date.date(),
+        Transaction.date < prev_end_date.date(),
+        Transaction.client_name.isnot(None),
+        Transaction.client_name != ''
+    ).scalar() or 0
+    
     prev_revenue = safe_decimal(prev_stats.total_revenue) if prev_stats.total_revenue else Decimal('0')
     prev_transactions_count = int(prev_stats.total_transactions or 0)
-    prev_clients = int(prev_stats.unique_clients or 0)
     
     # Calculate changes using safe_percentage (prevents division by zero)
     revenue_change = to_float(safe_percentage(

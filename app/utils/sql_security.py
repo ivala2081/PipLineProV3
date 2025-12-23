@@ -249,15 +249,22 @@ class SecureSQLExecutor:
         else:
             select_clause = '*'
         
-        # Build query
-        query = f"SELECT {select_clause} FROM {table}"
-        
+        # Build query using parameterized query - NEVER use f-strings with user input
+        # Table and column names are already validated via whitelist
+        # Use parameterized queries for WHERE clause values
         if where_clause:
-            # Validate WHERE clause
+            # Validate WHERE clause structure (should only contain column names and operators)
+            # WHERE clause should use parameter placeholders, not direct values
             if not self.validator.validate_sql_statement(where_clause):
-                raise ValueError("Unsafe WHERE clause")
-            query += f" WHERE {where_clause}"
+                raise ValueError("Unsafe WHERE clause detected")
+            # Ensure WHERE clause uses parameter placeholders, not string interpolation
+            if "'" in where_clause or '"' in where_clause:
+                raise ValueError("WHERE clause must use parameter placeholders, not string literals")
+            query = f"SELECT {select_clause} FROM {table} WHERE {where_clause}"
+        else:
+            query = f"SELECT {select_clause} FROM {table}"
         
+        # Execute with parameters to prevent SQL injection
         return self.execute_safe_query(query, parameters)
     
     def execute_safe_count(self, table: str, where_clause: Optional[str] = None,

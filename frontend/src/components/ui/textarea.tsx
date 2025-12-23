@@ -15,7 +15,7 @@ const textareaVariants = cva(
         info: "border-blue-300 bg-blue-50 hover:border-blue-400 focus-visible:ring-blue-500",
         ghost: "border-transparent bg-transparent hover:bg-gray-50 focus-visible:ring-gray-500",
         filled: "border-gray-200 bg-gray-50 hover:bg-gray-100 focus-visible:ring-gray-500",
-        gradient: "border-transparent bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 focus-visible:ring-blue-500",
+        gradient: "border-gray-200 bg-gray-50 hover:bg-gray-100 focus-visible:ring-gray-500",
       },
       size: {
         default: "min-h-[80px]",

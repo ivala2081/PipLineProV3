@@ -348,11 +348,13 @@ def get_consolidated_dashboard():
                 
                 # Use net_amount for payment method calculations (after commission)
                 amount_to_add_tl = abs(net_amount_tl)
-                amount_to_add_usd = abs(net_amount_usd) if payment_method == 'TETHER' and currency == 'USD' else abs(amount_usd)
+                # Tether always uses USD, so always use net_amount_usd for Tether
+                amount_to_add_usd = abs(net_amount_usd) if payment_method == 'TETHER' else abs(amount_usd)
                 
                 # Use gross amount for deposits/withdrawals
                 gross_amount_tl = abs(amount_tl)
-                if payment_method == 'TETHER' and currency == 'USD':
+                # Tether always uses USD directly, regardless of currency field
+                if payment_method == 'TETHER':
                     gross_amount_usd = abs(amount_usd)  # Tether uses USD directly
                 else:
                     gross_amount_usd = abs(amount_usd) if currency == 'USD' else (gross_amount_tl / exchange_rate if exchange_rate > 0 else 0)
@@ -416,7 +418,8 @@ def get_consolidated_dashboard():
             Transaction.net_amount_try,
             Transaction.net_amount,
             Transaction.currency,
-            Transaction.category
+            Transaction.category,
+            Transaction.exchange_rate
         ).all()
         daily_totals = calculate_payment_method_totals(daily_query)
         
@@ -433,7 +436,8 @@ def get_consolidated_dashboard():
             Transaction.net_amount_try,
             Transaction.net_amount,
             Transaction.currency,
-            Transaction.category
+            Transaction.category,
+            Transaction.exchange_rate
         ).all()
         monthly_totals = calculate_payment_method_totals(monthly_query)
         
@@ -570,8 +574,12 @@ def get_consolidated_dashboard():
         logger.debug(f"Monthly payment method breakdown: BANK TL={monthly_totals['bank_tl']}, CC TL={monthly_totals['cc_tl']}, TETHER USD={monthly_totals['tether_usd']}")
         
         # Query 2: Get active clients count separately for better performance
+        # CRITICAL FIX: Filter out NULL and empty client_name values for accurate active clients count
         query_2_start = time_module.time()
-        active_clients_count = base_query.with_entities(
+        active_clients_count = base_query.filter(
+            Transaction.client_name.isnot(None),
+            Transaction.client_name != ''
+        ).with_entities(
             func.count(func.distinct(Transaction.client_name)).label('active_clients')
         ).scalar() or 0
         query_2_time = (time_module.time() - query_2_start) * 1000
@@ -638,81 +646,88 @@ def get_consolidated_dashboard():
             # Instead of querying earliest transaction (slow), use fixed limit
             chart_start_date = now - timedelta(days=min(chart_limit_days, 135))
         
-        # Get daily net cash data - CRITICAL FIX: Use deposits - withdrawals, not net_amount_try
-        # Net cash = deposits - withdrawals (cash flow), not revenue
+        # Get daily net cash data - CRITICAL FIX: Use daily summary approach
+        # Net cash = deposits - withdrawals in USD (matching daily summary calculation)
         chart_date_filter = chart_start_date.date() if hasattr(chart_start_date, 'date') else chart_start_date
         
-        # Get daily deposits
-        daily_deposits_query = base_query.filter(
-            Transaction.date >= chart_date_filter,
-            Transaction.category == 'DEP'
+        # Get all transactions for the date range with exchange rate info
+        daily_transactions_query = base_query.filter(
+            Transaction.date >= chart_date_filter
         ).with_entities(
             Transaction.date.label('date'),
+            Transaction.category,
             Transaction.amount_try,
             Transaction.amount,
-            Transaction.currency
+            Transaction.currency,
+            Transaction.commission,
+            Transaction.exchange_rate
         ).order_by(Transaction.date).all()
         
-        # Get daily withdrawals
-        daily_withdrawals_query = base_query.filter(
-            Transaction.date >= chart_date_filter,
-            Transaction.category == 'WD'
-        ).with_entities(
-            Transaction.date.label('date'),
-            Transaction.amount_try,
-            Transaction.amount,
-            Transaction.currency
-        ).order_by(Transaction.date).all()
+        # Process transactions by date - calculate deposits, withdrawals, and commissions in USD
+        # This matches the daily_summary calculation logic
+        daily_deposits_usd = {}
+        daily_withdrawals_usd = {}
+        daily_commissions_usd = {}
         
-        # Process deposits by date
-        daily_deposits_dict = {}
-        for row in daily_deposits_query:
+        for row in daily_transactions_query:
             date_str = row.date.strftime('%Y-%m-%d') if hasattr(row.date, 'strftime') else str(row.date)
-            if row.amount_try is not None:
-                deposit_value = abs(float(row.amount_try or 0))
-            else:
-                amount = abs(float(row.amount or 0))
-                if row.currency and row.currency.upper() == 'USD':
-                    deposit_value = amount * exchange_rate
-                elif row.currency and row.currency.upper() == 'EUR':
-                    try:
-                        latest_rate = ExchangeRate.query.order_by(ExchangeRate.date.desc()).first()
-                        eur_rate = float(latest_rate.eur_to_tl) if latest_rate and latest_rate.eur_to_tl else (exchange_rate * 1.08)
-                    except:
-                        eur_rate = exchange_rate * 1.08
-                    deposit_value = amount * eur_rate
+            is_withdrawal = row.category and row.category.upper() in ['WD', 'WITHDRAW', 'WITHDRAWAL']
+            
+            # Get exchange rate for this specific date
+            # row.date is already a date object from the query
+            date_obj = row.date.date() if hasattr(row.date, 'date') else row.date
+            date_rate = ExchangeRate.query.filter_by(date=date_obj).first()
+            day_exchange_rate = float(date_rate.usd_to_tl) if date_rate and date_rate.usd_to_tl else exchange_rate
+            
+            amount = abs(float(row.amount or 0))
+            commission = abs(float(row.commission or 0))
+            currency = (row.currency or 'TL').upper()
+            
+            # Calculate USD amount based on currency
+            if currency == 'USD':
+                amount_usd = amount
+                commission_usd = commission
+            elif currency == 'EUR':
+                # Get EUR rate for this date
+                if date_rate and date_rate.eur_to_tl:
+                    eur_rate = float(date_rate.eur_to_tl)
                 else:
-                    deposit_value = amount
-            daily_deposits_dict[date_str] = daily_deposits_dict.get(date_str, 0) + deposit_value
-        
-        # Process withdrawals by date
-        daily_withdrawals_dict = {}
-        for row in daily_withdrawals_query:
-            date_str = row.date.strftime('%Y-%m-%d') if hasattr(row.date, 'strftime') else str(row.date)
-            if row.amount_try is not None:
-                withdrawal_value = abs(float(row.amount_try or 0))
+                    eur_rate = day_exchange_rate * 1.08  # Fallback
+                # Convert EUR to USD: EUR_amount * (EUR/TL) / (USD/TL)
+                amount_usd = (amount * eur_rate) / day_exchange_rate if day_exchange_rate > 0 else 0
+                commission_usd = (commission * eur_rate) / day_exchange_rate if day_exchange_rate > 0 else 0
             else:
-                amount = abs(float(row.amount or 0))
-                if row.currency and row.currency.upper() == 'USD':
-                    withdrawal_value = amount * exchange_rate
-                elif row.currency and row.currency.upper() == 'EUR':
-                    try:
-                        latest_rate = ExchangeRate.query.order_by(ExchangeRate.date.desc()).first()
-                        eur_rate = float(latest_rate.eur_to_tl) if latest_rate and latest_rate.eur_to_tl else (exchange_rate * 1.08)
-                    except:
-                        eur_rate = exchange_rate * 1.08
-                    withdrawal_value = amount * eur_rate
+                # TL transaction - convert to USD
+                if row.amount_try is not None:
+                    amount_tl = abs(float(row.amount_try or 0))
                 else:
-                    withdrawal_value = amount
-            daily_withdrawals_dict[date_str] = daily_withdrawals_dict.get(date_str, 0) + withdrawal_value
+                    amount_tl = amount
+                amount_usd = amount_tl / day_exchange_rate if day_exchange_rate > 0 else 0
+                # Commission in TL - convert to USD
+                commission_usd = commission / day_exchange_rate if day_exchange_rate > 0 else 0
+            
+            # Add to deposits or withdrawals
+            if is_withdrawal:
+                daily_withdrawals_usd[date_str] = daily_withdrawals_usd.get(date_str, 0) + amount_usd
+            else:
+                daily_deposits_usd[date_str] = daily_deposits_usd.get(date_str, 0) + amount_usd
+            
+            # Add commission (applies to both deposits and withdrawals)
+            daily_commissions_usd[date_str] = daily_commissions_usd.get(date_str, 0) + commission_usd
         
-        # Calculate net cash per day (deposits - withdrawals)
+        # Calculate net cash per day in USD (deposits - withdrawals)
+        # Also calculate net cash after commission (deposits - withdrawals - commissions)
         daily_revenue_dict = {}
-        all_dates = set(daily_deposits_dict.keys()) | set(daily_withdrawals_dict.keys())
+        daily_revenue_after_commission_dict = {}
+        all_dates = set(daily_deposits_usd.keys()) | set(daily_withdrawals_usd.keys()) | set(daily_commissions_usd.keys())
         for date_str in all_dates:
-            deposits = daily_deposits_dict.get(date_str, 0)
-            withdrawals = daily_withdrawals_dict.get(date_str, 0)
-            daily_revenue_dict[date_str] = deposits - withdrawals
+            deposits_usd = daily_deposits_usd.get(date_str, 0)
+            withdrawals_usd = daily_withdrawals_usd.get(date_str, 0)
+            commissions_usd = daily_commissions_usd.get(date_str, 0)
+            # Net Cash USD = Deposits USD - Withdrawals USD (before commission)
+            daily_revenue_dict[date_str] = deposits_usd - withdrawals_usd
+            # Net Cash USD After Commission = Deposits USD - Withdrawals USD - Commissions USD
+            daily_revenue_after_commission_dict[date_str] = deposits_usd - withdrawals_usd - commissions_usd
         query_4_time = (time_module.time() - query_4_start) * 1000
         logger.debug(f"Chart data query: {query_4_time:.2f}ms")
         # Removed verbose logging - only log slow queries
@@ -730,11 +745,20 @@ def get_consolidated_dashboard():
         end_date = now.date()
         while current_date <= end_date:
             date_str = current_date.strftime('%Y-%m-%d')
-            net_cash_value = daily_revenue_dict.get(date_str, 0)
+            net_cash_usd = daily_revenue_dict.get(date_str, 0)
+            net_cash_after_commission_usd = daily_revenue_after_commission_dict.get(date_str, 0)
+            deposits_usd = daily_deposits_usd.get(date_str, 0)
+            withdrawals_usd = daily_withdrawals_usd.get(date_str, 0)
+            commissions_usd = daily_commissions_usd.get(date_str, 0)
             daily_revenue.append({
                 'date': date_str,
-                'amount': net_cash_value,  # Keep 'amount' for backwards compatibility
-                'net_cash': net_cash_value  # Also provide as 'net_cash' for clarity
+                'amount': net_cash_usd,  # Net Cash USD for backwards compatibility
+                'net_cash': net_cash_usd,  # Net Cash USD (deposits - withdrawals) - before commission
+                'net_cash_usd': net_cash_usd,  # Explicit Net Cash USD field (before commission)
+                'net_cash_after_commission_usd': net_cash_after_commission_usd,  # Net Cash USD after commission
+                'deposits_usd': deposits_usd,  # Deposits in USD
+                'withdrawals_usd': withdrawals_usd,  # Withdrawals in USD
+                'commissions_usd': commissions_usd  # Commissions in USD
             })
             current_date += timedelta(days=1)
         

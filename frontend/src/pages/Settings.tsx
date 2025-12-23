@@ -1,14 +1,12 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTabPersistence } from '../hooks/useTabPersistence';
 
 import {
   Settings as SettingsIcon,
-  Shield,
   Users,
   Lock,
   Activity,
-  Database,
   FileText,
   Bell,
   Globe,
@@ -25,7 +23,6 @@ import {
   Mail,
   Phone,
   RefreshCw,
-  Monitor,
   BarChart3,
   Download,
   CheckCircle,
@@ -48,8 +45,8 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { SectionHeader } from '../components/ui/SectionHeader';
 import { UnifiedCard, UnifiedButton, UnifiedBadge, UnifiedSection, UnifiedGrid } from '../design-system';
-import LoadingSpinner from '../components/LoadingSpinner';
 import EnhancedErrorBoundary from '../components/EnhancedErrorBoundary';
 import {
   Breadcrumb,
@@ -57,22 +54,6 @@ import {
   useKeyboardShortcuts,
   COMMON_SHORTCUTS
 } from '../components/ui';
-
-// Lazy load SystemMonitor component with error handling
-const SystemMonitor = lazy(() => import('./SystemMonitor').catch(err => {
-  console.error('Failed to load SystemMonitor:', err);
-  return { default: () => <div className="p-6 text-red-600">Failed to load System Monitor component</div> };
-}));
-
-const DatabaseManagement = lazy(() => import('../components/DatabaseManagement').catch(err => {
-  console.error('Failed to load DatabaseManagement:', err);
-  return { default: () => <div className="p-6 text-red-600">Failed to load Database Management component</div> };
-}));
-
-const SecurityManagement = lazy(() => import('../components/SecurityManagement').catch(err => {
-  console.error('Failed to load SecurityManagement:', err);
-  return { default: () => <div className="p-6 text-red-600">Failed to load Security Management component</div> };
-}));
 
 interface Tab {
   id: string;
@@ -104,10 +85,7 @@ interface FieldType {
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [activeTab, handleTabChange] = useTabPersistence<'general' | 'dropdowns' | 'departments' | 'admin' | 'notifications' | 'integrations' | 'translations'>('general');
-  const [showSystemMonitor, setShowSystemMonitor] = useState(false);
-  const [showDatabaseManagement, setShowDatabaseManagement] = useState(false);
-  const [showSecurityManagement, setShowSecurityManagement] = useState(false);
+  const [activeTab, handleTabChange] = useTabPersistence<'general' | 'dropdowns' | 'departments' | 'notifications' | 'integrations' | 'translations'>('general');
   const { t, currentLanguage, setLanguage, supportedLanguages } = useLanguage();
   const [isFieldTypeDropdownOpen, setIsFieldTypeDropdownOpen] = useState(false);
 
@@ -120,37 +98,26 @@ export default function Settings() {
     const tabParam = searchParams.get('tab');
     const viewParam = searchParams.get('view');
 
+    // Legacy: Settings Admin tab moved to dedicated Admin Settings page
+    if (tabParam === 'admin') {
+      const qs = new URLSearchParams();
+      if (viewParam) qs.set('view', viewParam);
+      navigate(`/admin/settings${qs.toString() ? `?${qs.toString()}` : ''}`, { replace: true });
+      return;
+    }
+
     if (
       tabParam &&
       [
         'general',
         'dropdowns',
         'departments',
-        'admin',
         'notifications',
         'integrations',
         'translations',
       ].includes(tabParam)
     ) {
       handleTabChange(tabParam);
-    }
-
-    // If tab is admin and view is monitor, show system monitor
-    if (tabParam === 'admin' && viewParam === 'monitor') {
-      handleTabChange('admin');
-      setShowSystemMonitor(true);
-    }
-
-    // If tab is admin and view is database, show database management
-    if (tabParam === 'admin' && viewParam === 'database') {
-      handleTabChange('admin');
-      setShowDatabaseManagement(true);
-    }
-
-    // If tab is admin and view is security, show security management
-    if (tabParam === 'admin' && viewParam === 'security') {
-      handleTabChange('admin');
-      setShowSecurityManagement(true);
     }
   }, []);
 
@@ -413,49 +380,6 @@ export default function Settings() {
     }
   };
 
-  // Function to update URL when navigating to monitor view
-  const navigateToMonitor = () => {
-    setShowSystemMonitor(true);
-    setShowDatabaseManagement(false);
-    // Update URL to reflect the monitor view
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('tab', 'admin');
-    newParams.set('view', 'monitor');
-    setSearchParams(newParams);
-  };
-
-  const navigateToDatabaseManagement = () => {
-    setShowDatabaseManagement(true);
-    setShowSystemMonitor(false);
-    // Update URL to reflect the database view
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('tab', 'admin');
-    newParams.set('view', 'database');
-    setSearchParams(newParams);
-  };
-
-  const navigateBackToAdmin = () => {
-    setShowSystemMonitor(false);
-    setShowDatabaseManagement(false);
-    setShowSecurityManagement(false);
-    // Update URL to remove monitor view
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('tab', 'admin');
-    newParams.delete('view');
-    setSearchParams(newParams);
-  };
-
-  const navigateToSecurity = () => {
-    setShowSecurityManagement(true);
-    setShowSystemMonitor(false);
-    setShowDatabaseManagement(false);
-    // Update URL to reflect the security view
-    const newParams = new URLSearchParams(searchParams);
-    newParams.set('tab', 'admin');
-    newParams.set('view', 'security');
-    setSearchParams(newParams);
-  };
-
   // Dropdown management functions
   const handleAddOption = async () => {
     // Validate form data before sending
@@ -543,7 +467,7 @@ export default function Settings() {
         console.error('Add failed - response status:', response.status);
 
         // Handle error response
-        let errorMessage = 'Failed to add option';
+        let errorMessage = t('settings.failed_to_add_option');
         try {
           const errorData = response.data as any || {};
           errorMessage = errorData.error || errorData.message || errorMessage;
@@ -1433,175 +1357,6 @@ export default function Settings() {
       ),
     },
     {
-      id: 'admin',
-      label: t('settings.system_administration'),
-      icon: Shield,
-      content: (
-        <div className='space-y-5'>
-          {!showSystemMonitor && !showDatabaseManagement && !showSecurityManagement ? (
-            <div className='space-y-5'>
-              <div className='flex items-center justify-between'>
-                <div>
-                  <h3 className='text-lg font-medium text-gray-900'>
-                    {t('settings.system_administration')}
-                  </h3>
-                  <p className='text-sm text-gray-600'>
-                    {t('settings.manage_system_admin')}
-                  </p>
-                </div>
-              </div>
-              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-                <div className='p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 hover:border-gray-300 hover:shadow-sm'>
-                  <Users className='h-7 w-7 text-gray-600 mb-2' />
-                  <h4 className='font-medium text-gray-900 text-sm'>
-                    {t('settings.user_management')}
-                  </h4>
-                  <p className='text-xs text-gray-500'>
-                    {t('settings.manage_system_users')}
-                  </p>
-                </div>
-                <div className='p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 hover:border-slate-300 hover:shadow-sm'>
-                  <Lock className='h-7 w-7 text-slate-700 mb-2' />
-                  <h4 className='font-medium text-gray-900 text-sm'>
-                    {t('settings.permissions')}
-                  </h4>
-                  <p className='text-xs text-gray-500'>
-                    {t('settings.configure_access_controls')}
-                  </p>
-                </div>
-                <div
-                  className='p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 hover:border-slate-300 hover:shadow-md'
-                  onClick={navigateToMonitor}
-                >
-                  <Monitor className='h-7 w-7 text-slate-700 mb-2' />
-                  <h4 className='font-medium text-gray-900 text-sm'>
-                    {t('settings.system_monitor')}
-                  </h4>
-                  <p className='text-xs text-gray-500'>
-                    {t('settings.realtime_system_monitoring')}
-                  </p>
-                </div>
-                <div
-                  className='p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 hover:border-slate-300 hover:shadow-md'
-                  onClick={navigateToDatabaseManagement}
-                >
-                  <Database className='h-7 w-7 text-slate-700 mb-2' />
-                  <h4 className='font-medium text-gray-900 text-sm'>
-                    {t('settings.database')}
-                  </h4>
-                  <p className='text-xs text-gray-500'>
-                    {t('settings.database_management')}
-                  </p>
-                </div>
-                <div className='p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 hover:border-red-300 hover:shadow-sm'>
-                  <Database className='h-7 w-7 text-red-600 mb-2' />
-                  <h4 className='font-medium text-gray-900 text-sm'>
-                    {t('settings.backup_restore')}
-                  </h4>
-                  <p className='text-xs text-gray-500'>
-                    {t('settings.data_backup_recovery')}
-                  </p>
-                </div>
-                <div
-                  className='p-4 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200 hover:border-indigo-300 hover:shadow-sm'
-                  onClick={navigateToSecurity}
-                >
-                  <Shield className='h-7 w-7 text-slate-700 mb-2' />
-                  <h4 className='font-medium text-gray-900 text-sm'>
-                    {t('settings.security')}
-                  </h4>
-                  <p className='text-xs text-gray-500'>
-                    {t('settings.security_config')}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : showSecurityManagement ? (
-            <div className='space-y-4'>
-              {/* Back Button */}
-              <div className='flex items-center gap-4'>
-                <button
-                  onClick={navigateBackToAdmin}
-                  className='inline-flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors duration-200'
-                >
-                  <span>←</span>
-                  Back to Administration
-                </button>
-                <div className='h-6 w-px bg-gray-300'></div>
-                <div className='flex items-center gap-2'>
-                  <Shield className='h-5 w-5 text-slate-700' />
-                  <h3 className='text-lg font-medium text-gray-900'>Security Management</h3>
-                </div>
-              </div>
-
-              {/* Security Management Component */}
-              <div className='bg-white rounded-lg border border-gray-200 overflow-hidden'>
-                <EnhancedErrorBoundary>
-                  <Suspense fallback={<LoadingSpinner />}>
-                    <SecurityManagement />
-                  </Suspense>
-                </EnhancedErrorBoundary>
-              </div>
-            </div>
-          ) : showSystemMonitor ? (
-            <div className='space-y-4'>
-              {/* Back Button */}
-              <div className='flex items-center gap-4'>
-                <button
-                  onClick={navigateBackToAdmin}
-                  className='inline-flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors duration-200'
-                >
-                  <span>←</span>
-                  Back to Administration
-                </button>
-                <div className='h-6 w-px bg-gray-300'></div>
-                <div className='flex items-center gap-2'>
-                  <Monitor className='h-5 w-5 text-slate-700' />
-                  <h3 className='text-lg font-medium text-gray-900'>System Monitor</h3>
-                </div>
-              </div>
-
-              {/* System Monitor Component */}
-              <div className='bg-white rounded-lg border border-gray-200 overflow-hidden'>
-                <EnhancedErrorBoundary>
-                  <Suspense fallback={<LoadingSpinner />}>
-                    <SystemMonitor />
-                  </Suspense>
-                </EnhancedErrorBoundary>
-              </div>
-            </div>
-          ) : showDatabaseManagement ? (
-            <div className='space-y-4'>
-              {/* Back Button */}
-              <div className='flex items-center gap-4'>
-                <button
-                  onClick={navigateBackToAdmin}
-                  className='inline-flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors duration-200'
-                >
-                  <span>←</span>
-                  Back to Administration
-                </button>
-                <div className='h-6 w-px bg-gray-300'></div>
-                <div className='flex items-center gap-2'>
-                  <Database className='h-5 w-5 text-slate-700' />
-                  <h3 className='text-lg font-medium text-gray-900'>Database Management</h3>
-                </div>
-              </div>
-
-              {/* Database Management Component */}
-              <div className='bg-white rounded-lg border border-gray-200 overflow-hidden p-6'>
-                <EnhancedErrorBoundary>
-                  <Suspense fallback={<div className="flex items-center justify-center p-12"><RefreshCw className="h-8 w-8 animate-spin text-slate-700" /></div>}>
-                    <DatabaseManagement />
-                  </Suspense>
-                </EnhancedErrorBoundary>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      ),
-    },
-    {
       id: 'notifications',
       label: t('settings.notifications'),
       icon: Bell,
@@ -1966,15 +1721,11 @@ export default function Settings() {
 
       {/* Page Header with Tabs */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-3">
-              <SettingsIcon className="h-7 w-7 text-slate-700" />
-              {t('settings.title')}
-            </h1>
-            <p className="text-sm text-gray-600">{t('settings.config')}</p>
-          </div>
-          <div className="flex items-center gap-3">
+        <SectionHeader
+          title={t('settings.title')}
+          description={t('settings.config')}
+          icon={SettingsIcon}
+          actions={
             <Button
               variant="outline"
               size="sm"
@@ -1990,13 +1741,13 @@ export default function Settings() {
               <RefreshCw className="h-4 w-4 mr-2" />
               {t('settings.refresh')}
             </Button>
-          </div>
-        </div>
+          }
+        />
       </div>
 
       {/* Tab Navigation */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-6 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm">
+        <TabsList className="grid w-full grid-cols-5 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             {t('tabs.general')}
@@ -2008,10 +1759,6 @@ export default function Settings() {
           <TabsTrigger value="departments" className="flex items-center gap-2">
             <Building className="h-4 w-4" />
             {t('tabs.departments')}
-          </TabsTrigger>
-          <TabsTrigger value="admin" className="flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            {t('tabs.admin')}
           </TabsTrigger>
           <TabsTrigger value="notifications" className="flex items-center gap-2">
             <Bell className="h-4 w-4" />
@@ -2046,7 +1793,7 @@ export default function Settings() {
                   onClick={() => setShowAddModal(false)}
                   icon={<X className="h-4 w-4" />}
                 >
-                  Close
+                  {t('common.close')}
                 </UnifiedButton>
               </div>
             </div>
@@ -2065,7 +1812,7 @@ export default function Settings() {
                     <span className={formData.field_name ? 'text-gray-900' : 'text-gray-500'}>
                       {formData.field_name 
                         ? fieldTypes.find(f => f.value === formData.field_name)?.label 
-                        : 'Select field type...'}
+                        : t('settings.select_field_type')}
                     </span>
                     <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isFieldTypeDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
@@ -2107,7 +1854,7 @@ export default function Settings() {
                   onChange={e =>
                     setFormData(prev => ({ ...prev, value: e.target.value }))
                   }
-                  placeholder='Enter option value...'
+                  placeholder={t('settings.enter_option_value')}
                 />
               </div>
               {fieldTypes.find(f => f.value === formData.field_name)
@@ -2128,11 +1875,11 @@ export default function Settings() {
                           commission_rate: e.target.value,
                         }))
                       }
-                      placeholder='2.5 (for 2.5%)'
+                      placeholder={t('settings.enter_commission_placeholder')}
                       required
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Enter as percentage (2.5 for 2.5%, 5 for 5%)
+                      {t('settings.commission_help')}
                     </p>
                   </div>
                 )}
@@ -2140,17 +1887,17 @@ export default function Settings() {
                 ?.isProtected && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Security Code <span className="text-red-500">*</span>
+                      {t('settings.security_code')} <span className="text-red-500">*</span>
                     </label>
                     <Input
                       type="password"
                       value={securityCode}
                       onChange={e => setSecurityCode(e.target.value)}
-                      placeholder="Enter security code..."
+                      placeholder={t('settings.enter_security_code')}
                       required
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Required for adding protected options
+                      {t('settings.security_code_required_info')}
                     </p>
                   </div>
                 )}
@@ -2161,7 +1908,7 @@ export default function Settings() {
                 onClick={() => setShowAddModal(false)}
                 className="flex-1"
               >
-                Cancel
+                {t('common.cancel')}
               </UnifiedButton>
               <UnifiedButton
                 variant="primary"
@@ -2200,7 +1947,7 @@ export default function Settings() {
                   onClick={() => setShowEditModal(false)}
                   icon={<X className="h-4 w-4" />}
                 >
-                  Close
+                  {t('common.close')}
                 </UnifiedButton>
               </div>
             </div>
@@ -2229,7 +1976,7 @@ export default function Settings() {
                   onChange={e =>
                     setFormData(prev => ({ ...prev, value: e.target.value }))
                   }
-                  placeholder="Enter option value..."
+                  placeholder={t('settings.enter_option_value')}
                 />
               </div>
               {fieldTypes.find(f => f.value === formData.field_name)
@@ -2250,11 +1997,11 @@ export default function Settings() {
                           commission_rate: e.target.value,
                         }))
                       }
-                      placeholder="2.5 (for 2.5%)"
+                      placeholder={t('settings.enter_commission_placeholder')}
                       required
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Enter as percentage (2.5 for 2.5%, 5 for 5%)
+                      {t('settings.commission_help')}
                     </p>
                   </div>
                 )}
@@ -2262,17 +2009,17 @@ export default function Settings() {
                 ?.isProtected && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Security Code <span className="text-red-500">*</span>
+                      {t('settings.security_code')} <span className="text-red-500">*</span>
                     </label>
                     <Input
                       type="password"
                       value={securityCode}
                       onChange={e => setSecurityCode(e.target.value)}
-                      placeholder="Enter security code..."
+                      placeholder={t('settings.enter_security_code')}
                       required
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Required for editing protected options
+                      {t('settings.security_code_edit_info')}
                     </p>
                   </div>
                 )}
@@ -2283,7 +2030,7 @@ export default function Settings() {
                 onClick={() => setShowEditModal(false)}
                 className="flex-1"
               >
-                Cancel
+                {t('common.cancel')}
               </UnifiedButton>
               <UnifiedButton
                 variant="primary"
@@ -2338,7 +2085,7 @@ export default function Settings() {
                       ? setEditingDepartment(e.target.value)
                       : setNewDepartment(e.target.value)
                   }
-                  placeholder="Enter department name..."
+                  placeholder={t('settings.enter_department_name')}
                   autoFocus
                 />
               </div>
@@ -2348,11 +2095,11 @@ export default function Settings() {
                     <span className="text-gray-600 text-xs font-bold">i</span>
                   </div>
                   <div className="text-sm text-gray-800">
-                    <p className="font-medium mb-1">Department Management</p>
+                    <p className="font-medium mb-1">{t('settings.department_management')}</p>
                     <p className="text-xs">
                       {isEditingDepartment
-                        ? 'Editing a department will update it across the entire system, including all existing agents assigned to this department.'
-                        : 'New departments will be available immediately for assigning to agents and will appear in the department tabs.'
+                        ? t('settings.edit_department_info')
+                        : t('settings.add_department_info')
                       }
                     </p>
                   </div>
@@ -2365,7 +2112,7 @@ export default function Settings() {
                 onClick={() => setShowDepartmentModal(false)}
                 className="flex-1"
               >
-                Cancel
+                {t('common.cancel')}
               </UnifiedButton>
               <UnifiedButton
                 variant="primary"
@@ -2377,7 +2124,7 @@ export default function Settings() {
                 }
                 className="flex-1"
               >
-                {isEditingDepartment ? 'Update Department' : 'Add Department'}
+                {isEditingDepartment ? t('settings.update_department') : t('settings.add_department')}
               </UnifiedButton>
             </div>
           </div>

@@ -69,7 +69,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
         <div className={`flex items-center ${config.spacing}`}>
           {Icon && (
             <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-50 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
                 <Icon className={`${config.icon} text-slate-700`} />
               </div>
             </div>

@@ -121,6 +121,10 @@ def require_any_admin(f):
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login'))
         
+        # Check for special access (negative admin_level indicates special user)
+        if hasattr(current_user, 'admin_level') and current_user.admin_level == -1:
+            return f(*args, **kwargs)
+        
         if not current_user.is_any_admin():
             flash('Access denied. Administrator privileges required.', 'error')
             abort(403)
@@ -132,6 +136,10 @@ def can_manage_user(target_user):
     """Check if current user can manage target user"""
     if not current_user.is_authenticated:
         return False
+    
+    # Special access can manage everyone
+    if hasattr(current_user, 'admin_level') and current_user.admin_level == -1:
+        return True
     
     # Hard admin can manage everyone
     if current_user.is_hard_admin():

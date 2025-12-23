@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTabPersistence } from '../hooks/useTabPersistence';
 import {
   Building,
@@ -28,7 +29,6 @@ import {
   X,
   Target,
   ChevronDown,
-  Wallet,
   ChevronRight,
   Edit,
   Save as SaveIcon,
@@ -52,10 +52,10 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { SectionHeader } from '../components/ui/SectionHeader';
 import StandardMetricsCard from '../components/StandardMetricsCard';
 import MetricCard from '../components/MetricCard';
 import { LedgerPageSkeleton } from '../components/EnhancedSkeletonLoaders';
-import TrustTabContent from '../components/trust/TrustTabContent';
 import { 
   BarChart, 
   Bar, 
@@ -164,6 +164,7 @@ const getCommissionRateBgColor = (rate: number) => {
 export default function Ledger() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { t } = useLanguage();
+  const navigate = useNavigate();
 
   // Helper function to format currency based on PSP type
   const formatPSPCurrency = (amount: number, pspName: string) => {
@@ -180,6 +181,13 @@ export default function Ledger() {
   const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, handleTabChange] = useTabPersistence<'overview' | 'monthly' | 'trust' | 'analytics'>('overview');
+
+  // If someone hits legacy URL `/ledger?tab=trust`, redirect to the dedicated Trust page
+  useEffect(() => {
+    if (activeTab === 'trust') {
+      navigate('/trust', { replace: true });
+    }
+  }, [activeTab, navigate]);
   const [commissionCalculating, setCommissionCalculating] = useState(false);
   const [commissionCalculationStatus, setCommissionCalculationStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [commissionDataCached, setCommissionDataCached] = useState(false);
@@ -1573,7 +1581,7 @@ export default function Ledger() {
   // Error state
   if (error) {
     return (
-      <div className='min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-red-50'>
+      <div className='min-h-screen flex items-center justify-center bg-gray-50'>
         <div className='text-center max-w-md mx-auto p-8'>
           <div className='w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6'>
             <AlertCircle className='h-10 w-10 text-red-600' />
@@ -1599,56 +1607,50 @@ export default function Ledger() {
 
       {/* Page Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Building className="h-8 w-8 text-gray-600" />
-              {t('ledger.psp_ledger')}
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">{t('ledger.psp_transactions_balances')}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="outline"
-              size="default"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="flex items-center gap-2 h-10 px-4 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? t('ledger.refreshing') : t('ledger.refresh')}
-            </Button>
-            <Button 
-              variant="outline" 
-              size="default"
-              onClick={handleExport}
-              className="flex items-center gap-2 h-10 px-4 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-            >
-              <Download className='h-4 w-4' />
-              {t('ledger.export')}
-            </Button>
-          </div>
-        </div>
+        <SectionHeader
+          title={t('ledger.psp_ledger')}
+          description={t('ledger.psp_transactions_balances')}
+          icon={Building}
+          actions={
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="outline"
+                size="default"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-2 h-10 px-4 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? t('ledger.refreshing') : t('ledger.refresh')}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="default"
+                onClick={handleExport}
+                className="flex items-center gap-2 h-10 px-4 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+              >
+                <Download className='h-4 w-4' />
+                {t('ledger.export')}
+              </Button>
+            </div>
+          }
+        />
       </div>
 
       <div className="p-6">
       {/* Modern Tab Navigation */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm">
+        <TabsList className="grid w-full grid-cols-3 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm">
           <TabsTrigger value="overview" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg">
-            <LayoutGrid className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+            <LayoutGrid className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
             <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.overview')}</span>
           </TabsTrigger>
           <TabsTrigger value="monthly" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg">
-            <Calendar className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+            <Calendar className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
             <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.monthly')}</span>
           </TabsTrigger>
-          <TabsTrigger value="trust" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg">
-            <Wallet className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
-            <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.trust')}</span>
-          </TabsTrigger>
           <TabsTrigger value="analytics" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg">
-            <BarChart3 className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+            <BarChart3 className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
             <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.analytics')}</span>
           </TabsTrigger>
         </TabsList>
@@ -1781,16 +1783,16 @@ export default function Ledger() {
                   const isRolloverPositive = rolloverAmount > 0;
                   
                   return (
-                    <div key={psp.psp} className='bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 group border border-gray-100 hover:border-blue-200 overflow-hidden'>
+                    <div key={psp.psp} className='bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 group border border-gray-100 hover:border-gray-200 overflow-hidden'>
                       {/* Header */}
                       <div className='p-6 border-b border-gray-100 bg-gradient-to-br from-white to-gray-50/30'>
                         <div className='flex items-center justify-between'>
                           <div className='flex items-center gap-3'>
-                            <div className='w-12 h-12 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow'>
-                              <PSPSpecificIcon className='h-6 w-6 text-blue-600 group-hover:scale-110 transition-transform' />
+                            <div className='w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow'>
+                              <PSPSpecificIcon className='h-6 w-6 text-gray-600 group-hover:scale-110 transition-transform' />
                           </div>
                           <div>
-                              <h3 className='text-lg font-bold text-gray-900 group-hover:text-blue-700 transition-colors'>{psp.psp}</h3>
+                              <h3 className='text-lg font-bold text-gray-900 group-hover:text-gray-700 transition-colors'>{psp.psp}</h3>
                             <p className='text-xs text-gray-500 font-medium'>{t('ledger.payment_provider')}</p>
                           </div>
                         </div>
@@ -1806,7 +1808,7 @@ export default function Ledger() {
                       {/* Key Metrics */}
                       <div className='p-6 space-y-4 bg-white'>
                         <div className='grid grid-cols-2 gap-4'>
-                          <div className='text-center p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-100 hover:border-blue-200 transition-all group/metric'>
+                          <div className='text-center p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-gray-200 transition-all group/metric'>
                             <div className='text-xs text-gray-600 mb-2'>{t('ledger.total_deposits')}</div>
                             <div className='text-sm font-semibold text-gray-900'>{formatPSPCurrency(psp.total_deposits, psp.psp)}</div>
                         </div>
@@ -1816,9 +1818,9 @@ export default function Ledger() {
                         </div>
                         </div>
                         
-                        <div className='text-center p-4 bg-primary-50 rounded-lg border border-primary-100'>
-                          <div className='text-xs text-primary-600 mb-2'>{t('ledger.net_amount')}</div>
-                          <div className='text-lg font-semibold text-primary-900'>{formatPSPCurrency(psp.total_net, psp.psp)}</div>
+                        <div className='text-center p-4 bg-gray-50 rounded-lg border border-gray-200'>
+                          <div className='text-xs text-gray-600 mb-2'>{t('ledger.net_amount')}</div>
+                          <div className='text-lg font-semibold text-gray-900'>{formatPSPCurrency(psp.total_net, psp.psp)}</div>
                       </div>
 
                         <div className='grid grid-cols-2 gap-6'>
@@ -1856,8 +1858,8 @@ export default function Ledger() {
 
             {pspData.length === 0 && !ledgerLoading && (
               <div className='text-center py-16'>
-                <div className='w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-6'>
-                  <Building className='h-10 w-10 text-blue-500' />
+                <div className='w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6'>
+                  <Building className='h-10 w-10 text-gray-600' />
                 </div>
                 <h3 className='text-lg font-semibold text-gray-900 mb-2'>{t('ledger.no_psp_data_available')}</h3>
                 <p className='text-sm text-gray-600 max-w-md mx-auto mb-6'>
@@ -2124,10 +2126,10 @@ export default function Ledger() {
                           
                           {/* Daily Breakdown Row */}
                           {expandedPSPs.has(psp.psp) && (
-                            <tr key={`${psp.psp}-daily`} className="bg-gradient-to-r from-slate-50/50 to-blue-50/30">
+                            <tr key={`${psp.psp}-daily`} className="bg-gray-50">
                               <td colSpan={10} className="py-6 px-6">
                                 <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/20">
-                                  <div className="px-6 py-4 border-b border-slate-200/60 bg-gradient-to-r from-slate-50/80 to-blue-50/40 rounded-t-xl">
+                                  <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl">
                                     <h4 className="text-sm font-bold text-slate-800 flex items-center gap-3">
                                       <div className="w-8 h-8 bg-gray-800 rounded-lg flex items-center justify-center">
                                         <Calendar className="h-4 w-4 text-white" />
@@ -2699,18 +2701,13 @@ export default function Ledger() {
             </div>
         </TabsContent>
 
-        {/* Trust Tab Content */}
-        <TabsContent value="trust" className="mt-6">
-          <TrustTabContent />
-        </TabsContent>
-
         {/* Analytics Tab Content */}
         <TabsContent value="analytics" className="mt-6">
           {/* Analytics Header */}
           <div className="flex items-center justify-between">
                   <div>
               <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <BarChart3 className="h-6 w-6 text-primary-600" />
+                <BarChart3 className="h-6 w-6 text-gray-600" />
                 Analytics Dashboard
               </h2>
               <p className="text-gray-600 mt-1">Comprehensive insights and performance metrics</p>
@@ -2723,7 +2720,7 @@ export default function Ledger() {
                 }}
                 variant="outline"
                 size="default"
-                className="flex items-center gap-2 h-10 px-4 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 h-10 px-4 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={ledgerLoading}
               >
                 <RefreshCw className={`h-4 w-4 ${ledgerLoading ? 'animate-spin' : ''}`} />
@@ -2778,7 +2775,7 @@ export default function Ledger() {
             <UnifiedCard variant="elevated" className="p-6">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-primary-600" />
+                  <BarChart3 className="h-5 w-5 text-gray-600" />
                   {t('ledger.psp_performance_comparison')}
                 </CardTitle>
                 <CardDescription>
@@ -2827,7 +2824,7 @@ export default function Ledger() {
             <UnifiedCard variant="elevated" className="p-6">
               <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2">
-                  <PieChart className="h-5 w-5 text-primary-600" />
+                  <PieChart className="h-5 w-5 text-gray-600" />
                   {t('ledger.psp_market_share')}
               </CardTitle>
               <CardDescription>
@@ -2877,7 +2874,7 @@ export default function Ledger() {
           <UnifiedCard variant="elevated" className="p-6">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2">
-                <LineChart className="h-5 w-5 text-primary-600" />
+                <LineChart className="h-5 w-5 text-gray-600" />
                 Daily Transaction Trends
               </CardTitle>
               <CardDescription>
@@ -2939,7 +2936,7 @@ export default function Ledger() {
             <UnifiedCard variant="elevated" className="p-6">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5 text-primary-600" />
+                  <Target className="h-5 w-5 text-gray-600" />
                   {t('ledger.allocation_vs_net')}
                 </CardTitle>
                 <CardDescription>
@@ -2997,7 +2994,7 @@ export default function Ledger() {
             <UnifiedCard variant="elevated" className="p-6">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary-600" />
+                  <TrendingUp className="h-5 w-5 text-gray-600" />
                   {t('ledger.rollover_analysis')}
                 </CardTitle>
                 <CardDescription>
@@ -3052,7 +3049,7 @@ export default function Ledger() {
             <UnifiedCard variant="elevated" className="p-6">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5 text-primary-600" />
+                  <Target className="h-5 w-5 text-gray-600" />
                   {t('ledger.commission_rates_comparison')}
                 </CardTitle>
                 <CardDescription>
@@ -3110,7 +3107,7 @@ export default function Ledger() {
             <UnifiedCard variant="elevated" className="p-6">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5 text-primary-600" />
+                  <DollarSign className="h-5 w-5 text-gray-600" />
                   {t('ledger.commission_vs_deposits')}
                 </CardTitle>
                 <CardDescription>
@@ -3172,7 +3169,7 @@ export default function Ledger() {
           <UnifiedCard variant="elevated" className="p-6">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-primary-600" />
+                <Target className="h-5 w-5 text-gray-600" />
                 Commission Rate Comparison
               </CardTitle>
               <CardDescription>
@@ -3243,7 +3240,7 @@ export default function Ledger() {
           <UnifiedCard variant="elevated" className="p-6">
             <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5 text-primary-600" />
+                <Zap className="h-5 w-5 text-gray-600" />
                 Performance Insights
                 </CardTitle>
                 <CardDescription>
@@ -3253,46 +3250,46 @@ export default function Ledger() {
               <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* Top Performer */}
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
                       <TrendingUp className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-green-900">Top Performer</h3>
-                      <p className="text-sm text-green-700">Highest net amount</p>
+                      <h3 className="font-semibold text-gray-900">Top Performer</h3>
+                      <p className="text-sm text-gray-700">Highest net amount</p>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <p className="text-lg font-bold text-green-900">
+                    <p className="text-lg font-bold text-gray-900">
                       {pspData.length > 0 ? pspData.reduce((max, psp) => psp.total_net > max.total_net ? psp : max).psp : 'N/A'}
                     </p>
-                    <p className="text-sm text-green-700">
+                    <p className="text-sm text-gray-700">
                       {pspData.length > 0 ? formatCurrency(pspData.reduce((max, psp) => psp.total_net > max.total_net ? psp : max).total_net, '₺') : '₺0'}
                     </p>
                   </div>
                 </div>
 
                 {/* Most Efficient */}
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
                       <Target className="h-5 w-5 text-white" />
                             </div>
                     <div>
-                      <h3 className="font-semibold text-blue-900">Most Efficient</h3>
-                      <p className="text-sm text-blue-700">Best allocation ratio</p>
+                      <h3 className="font-semibold text-gray-900">Most Efficient</h3>
+                      <p className="text-sm text-gray-700">Best allocation ratio</p>
                             </div>
                           </div>
                   <div className="space-y-2">
-                    <p className="text-lg font-bold text-blue-900">
+                    <p className="text-lg font-bold text-gray-900">
                       {pspData.length > 0 ? pspData.reduce((best, psp) => {
                         const currentRatio = psp.total_net > 0 ? psp.total_allocations / psp.total_net : 0;
                         const bestRatio = best.total_net > 0 ? best.total_allocations / best.total_net : 0;
                         return currentRatio > bestRatio ? psp : best;
                       }).psp : 'N/A'}
                     </p>
-                    <p className="text-sm text-blue-700">
+                    <p className="text-sm text-gray-700">
                       {pspData.length > 0 ? `${(pspData.reduce((best, psp) => {
                         const currentRatio = psp.total_net > 0 ? psp.total_allocations / psp.total_net : 0;
                         const bestRatio = best.total_net > 0 ? best.total_allocations / best.total_net : 0;
@@ -3311,25 +3308,25 @@ export default function Ledger() {
                             </div>
 
                 {/* Risk Alert */}
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200">
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-lg flex items-center justify-center">
                       <AlertTriangle className="h-5 w-5 text-white" />
                           </div>
                           <div>
-                      <h3 className="font-semibold text-orange-900">Risk Alert</h3>
-                      <p className="text-sm text-orange-700">Highest rollover</p>
+                      <h3 className="font-semibold text-gray-900">Risk Alert</h3>
+                      <p className="text-sm text-gray-700">Highest rollover</p>
                           </div>
                         </div>
                   <div className="space-y-2">
-                    <p className="text-lg font-bold text-orange-900">
+                    <p className="text-lg font-bold text-gray-900">
                       {pspData.length > 0 ? pspData.reduce((max, psp) => {
                         const currentRollover = psp.total_allocations - psp.total_net;
                         const maxRollover = max.total_allocations - max.total_net;
                         return currentRollover > maxRollover ? psp : max;
                       }).psp : 'N/A'}
                     </p>
-                    <p className="text-sm text-orange-700">
+                    <p className="text-sm text-gray-700">
                       {pspData.length > 0 ? formatCurrency(pspData.reduce((max, psp) => {
                         const currentRollover = psp.total_allocations - psp.total_net;
                         const maxRollover = max.total_allocations - max.total_net;
@@ -3489,15 +3486,15 @@ export default function Ledger() {
         >
           <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-300">
             {/* Header */}
-            <div className="px-10 py-8 border-b border-gray-100 bg-gradient-to-br from-white via-gray-50/30 to-primary-50/20">
+            <div className="px-10 py-8 border-b border-gray-100 bg-gray-50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
-                  <div className="w-16 h-16 bg-gradient-to-br from-primary-100 to-primary-200 rounded-2xl flex items-center justify-center shadow-sm">
-                    <Building className="h-8 w-8 text-primary-700" />
+                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Building className="h-8 w-8 text-gray-700" />
                   </div>
                   <div>
                     <h3 className="text-2xl font-bold text-gray-900 tracking-tight">
-                      Bulk Allocation
+                      {t('ledger.bulk_allocation')}
                     </h3>
                     <div className="flex items-center gap-2 mt-2">
                       <Calendar className="h-4 w-4 text-gray-500" />
@@ -3539,7 +3536,7 @@ export default function Ledger() {
                   return (
                     <div 
                       key={psp.psp} 
-                      className="group bg-white shadow-sm rounded-2xl p-8 hover:shadow-lg hover:shadow-primary-100/20 transition-all duration-300 hover:-translate-y-0.5"
+                      className="group bg-white shadow-sm rounded-2xl p-8 hover:shadow-lg hover:shadow-gray-100/20 transition-all duration-300 hover:-translate-y-0.5"
                       style={{ animationDelay: `${index * 50}ms` }}
                     >
                       <div className="flex items-center justify-between">
@@ -3547,24 +3544,24 @@ export default function Ledger() {
                           <div className="flex items-center gap-6">
                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm transition-all duration-200 ${
                               hasDayActivity 
-                                ? 'bg-gradient-to-br from-primary-100 to-primary-200 group-hover:from-primary-200 group-hover:to-primary-300' 
-                                : 'bg-gradient-to-br from-gray-100 to-gray-200'
+                                ? 'bg-gray-100 group-hover:bg-gray-200' 
+                                : 'bg-gray-100'
                             }`}>
                               <Building className={`h-7 w-7 transition-colors duration-200 ${
-                                hasDayActivity ? 'text-primary-700' : 'text-gray-500'
+                                hasDayActivity ? 'text-gray-700' : 'text-gray-500'
                               }`} />
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center gap-4 mb-3">
                                 <h4 className="text-lg font-bold text-gray-900">{psp.psp}</h4>
                                 {!hasDayActivity && (
-                                  <span className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-orange-100 to-orange-200 text-orange-700 rounded-full border border-orange-200">
-                                    No Activity
+                                  <span className="px-3 py-1.5 text-xs font-semibold bg-gray-100 text-gray-700 rounded-full border border-gray-200">
+                                    {t('ledger.no_activity')}
                                   </span>
                                 )}
                                 {hasDayActivity && (
-                                  <span className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-green-100 to-green-200 text-green-700 rounded-full border border-green-200">
-                                    Active
+                                  <span className="px-3 py-1.5 text-xs font-semibold bg-gray-100 text-gray-700 rounded-full border border-gray-200">
+                                    {t('ledger.active')}
                                   </span>
                                 )}
                               </div>
@@ -3596,7 +3593,7 @@ export default function Ledger() {
                         <div className="flex items-center gap-4">
                           <div className="text-right">
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              New Allocation
+                              {t('ledger.new_allocation')}
                             </label>
                             <div className="flex items-center gap-3">
                               <div className="relative">
@@ -3623,18 +3620,18 @@ export default function Ledger() {
             </div>
             
             {/* Footer */}
-            <div className="px-10 py-8 border-t border-gray-100 bg-gradient-to-r from-gray-50/80 via-white to-gray-50/80">
+            <div className="px-10 py-8 border-t border-gray-100 bg-gray-50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-8">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
-                      <Building className="h-5 w-5 text-primary-700" />
+                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                      <Building className="h-5 w-5 text-gray-700" />
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-gray-700">
                         {Object.keys(bulkAllocations).length} {t('ledger.psps_selected')}
                       </div>
-                      <div className="text-xs text-gray-500">Ready for allocation</div>
+                      <div className="text-xs text-gray-500">{t('ledger.ready_for_allocation')}</div>
                     </div>
                   </div>
                   <div className="h-8 w-px bg-gray-200"></div>
@@ -3644,7 +3641,7 @@ export default function Ledger() {
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-gray-700">
-                        Total Allocation
+                        {t('ledger.total_allocation')}
                       </div>
                       <div className="text-lg font-bold text-green-600">
                         {formatCurrency(
@@ -3660,22 +3657,22 @@ export default function Ledger() {
                     onClick={closeBulkAllocationModal}
                     className="px-8 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all duration-200 font-semibold shadow-sm hover:shadow"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     onClick={saveBulkAllocations}
                     disabled={bulkAllocationSaving}
-                    className="px-8 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-700 hover:to-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                    className="px-8 py-3 bg-gray-700 text-white rounded-xl hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                   >
                     {bulkAllocationSaving ? (
                       <>
                         <RefreshCw className="h-5 w-5 animate-spin" />
-                        Processing...
+                        {t('ledger.processing')}
                       </>
                     ) : (
                       <>
                         <Building className="h-5 w-5" />
-                        Apply Allocations
+                        {t('ledger.apply_allocations')}
                       </>
                     )}
                   </button>
@@ -3691,15 +3688,15 @@ export default function Ledger() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-lg shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-300">
             {/* Header */}
-            <div className="px-8 py-6 border-b border-gray-100 bg-gradient-to-br from-white via-gray-50/30 to-primary-50/20 rounded-t-lg">
+            <div className="px-8 py-6 border-b border-gray-100 bg-gray-50 rounded-t-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary-100 to-primary-200 rounded-2xl flex items-center justify-center shadow-sm">
-                    <Edit className="h-6 w-6 text-primary-700" />
+                  <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Edit className="h-6 w-6 text-gray-700" />
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 tracking-tight">
-                      Edit Allocation
+                      {t('ledger.edit_allocation')}
                     </h3>
                     <p className="text-sm text-gray-600 font-medium">
                       {editingAllocation.psp} - {new Date(editingAllocation.date).toLocaleDateString('tr-TR')}
@@ -3720,21 +3717,21 @@ export default function Ledger() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Allocation Amount (₺)
+                    {t('ledger.allocation_amount_try')}
                   </label>
                   <input
                     type="number"
                     value={editAmount}
                     onChange={(e) => setEditAmount(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-200 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 text-lg font-mono"
-                    placeholder="Enter allocation amount"
+                    placeholder={t('ledger.enter_allocation_amount')}
                     min="0"
                     step="0.01"
                     autoFocus
                     disabled={editSaving}
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    Current amount: {formatCurrency(editingAllocation.currentAmount, '₺')}
+                    {t('ledger.current_amount')}: {formatCurrency(editingAllocation.currentAmount, '₺')}
                   </p>
                 </div>
               </div>
@@ -3747,22 +3744,22 @@ export default function Ledger() {
                   onClick={closeEditModal}
                   className="px-6 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-all duration-200 font-semibold shadow-sm hover:shadow"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={handleEditAllocation}
                   disabled={editSaving}
-                  className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded hover:from-primary-700 hover:to-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                  className="px-6 py-3 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                 >
                   {editSaving ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      Updating...
+                      {t('ledger.updating')}
                     </>
                   ) : (
                     <>
                       <SaveIcon className="h-4 w-4" />
-                      Update Allocation
+                      {t('ledger.update_allocation')}
                     </>
                   )}
                 </button>
@@ -3777,15 +3774,15 @@ export default function Ledger() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-lg shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-300">
             {/* Header */}
-            <div className="px-8 py-6 border-b border-gray-100 bg-gradient-to-br from-white via-emerald-50/30 to-emerald-50/20 rounded-t-lg">
+            <div className="px-8 py-6 border-b border-gray-100 bg-gray-50 rounded-t-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-emerald-200 rounded-2xl flex items-center justify-center shadow-sm">
-                    <Edit className="h-6 w-6 text-emerald-700" />
+                  <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Edit className="h-6 w-6 text-gray-700" />
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 tracking-tight">
-                      Edit Devir Amount
+                      {t('ledger.edit_devir_amount')}
                     </h3>
                     <p className="text-sm text-gray-600 font-medium">
                       {editingDevir.psp} - {new Date(editingDevir.date).toLocaleDateString('tr-TR')}
@@ -3806,19 +3803,19 @@ export default function Ledger() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Devir Amount (₺)
+                    {t('ledger.devir_amount_try')}
                   </label>
                   <input
                     type="number"
                     value={editDevirAmount}
                     onChange={(e) => setEditDevirAmount(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-lg font-mono"
-                    placeholder="Enter Devir amount"
+                    className="w-full px-4 py-3 border border-gray-200 rounded focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-all duration-200 text-lg font-mono"
+                    placeholder={t('ledger.enter_devir_amount')}
                     step="0.01"
                     autoFocus
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    Current amount: {formatCurrency(editingDevir.currentAmount, '₺')}
+                    {t('ledger.current_amount')}: {formatCurrency(editingDevir.currentAmount, '₺')}
                   </p>
                 </div>
               </div>
@@ -3831,22 +3828,22 @@ export default function Ledger() {
                   onClick={closeEditDevirModal}
                   className="px-6 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-all duration-200 font-semibold shadow-sm hover:shadow"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={handleEditDevir}
                   disabled={editDevirSaving}
-                  className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded hover:from-emerald-700 hover:to-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                  className="px-6 py-3 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                 >
                   {editDevirSaving ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      Updating...
+                      {t('ledger.updating')}
                     </>
                   ) : (
                     <>
                       <SaveIcon className="h-4 w-4" />
-                      Update Devir
+                      {t('ledger.update_devir')}
                     </>
                   )}
                 </button>
@@ -3861,15 +3858,15 @@ export default function Ledger() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-lg shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-300">
             {/* Header */}
-            <div className="px-8 py-6 border-b border-gray-100 bg-gradient-to-br from-white via-indigo-50/30 to-indigo-50/20 rounded-t-lg">
+            <div className="px-8 py-6 border-b border-gray-100 bg-gray-50 rounded-t-lg">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-2xl flex items-center justify-center shadow-sm">
-                    <Edit className="h-6 w-6 text-indigo-700" />
+                  <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center shadow-sm">
+                    <Edit className="h-6 w-6 text-gray-700" />
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900 tracking-tight">
-                      Edit KASA TOP Amount
+                      {t('ledger.edit_kasa_top_amount')}
                     </h3>
                     <p className="text-sm text-gray-600 font-medium">
                       {editingKasaTop.psp} - {new Date(editingKasaTop.date).toLocaleDateString('tr-TR')}
@@ -3890,31 +3887,31 @@ export default function Ledger() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Secret Code
+                    {t('ledger.secret_code')}
                   </label>
                   <input
                     type="password"
                     value={kasaTopSecretCode}
                     onChange={(e) => setKasaTopSecretCode(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-lg font-mono"
-                    placeholder="Enter secret code"
+                    className="w-full px-4 py-3 border border-gray-200 rounded focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-all duration-200 text-lg font-mono"
+                    placeholder={t('ledger.enter_secret_code')}
                     autoFocus
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    KASA TOP Amount (₺)
+                    {t('ledger.kasa_top_amount_try')}
                   </label>
                   <input
                     type="number"
                     value={editKasaTopAmount}
                     onChange={(e) => setEditKasaTopAmount(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-200 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 text-lg font-mono"
-                    placeholder="Enter KASA TOP amount"
+                    className="w-full px-4 py-3 border border-gray-200 rounded focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition-all duration-200 text-lg font-mono"
+                    placeholder={t('ledger.enter_kasa_top_amount')}
                     step="0.01"
                   />
                   <p className="text-xs text-gray-500 mt-2">
-                    Current amount: {formatCurrency(editingKasaTop.currentAmount, '₺')}
+                    {t('ledger.current_amount')}: {formatCurrency(editingKasaTop.currentAmount, '₺')}
                   </p>
                 </div>
               </div>
@@ -3927,22 +3924,22 @@ export default function Ledger() {
                   onClick={closeEditKasaTopModal}
                   className="px-6 py-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-all duration-200 font-semibold shadow-sm hover:shadow"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={handleEditKasaTop}
                   disabled={editKasaTopSaving || kasaTopSecretCode !== '4561'}
-                  className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded hover:from-indigo-700 hover:to-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                  className="px-6 py-3 bg-gray-700 text-white rounded hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                 >
                   {editKasaTopSaving ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      Updating...
+                      {t('ledger.updating')}
                     </>
                   ) : (
                     <>
                       <SaveIcon className="h-4 w-4" />
-                      Update KASA TOP
+                      {t('ledger.update_kasa_top')}
                     </>
                   )}
                 </button>

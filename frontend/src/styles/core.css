@@ -213,9 +213,9 @@
   --breakpoint-2xl: 1536px;
 }
 
-/* Theme-independent styling - Always light theme for professional business appearance */
-/* Dark mode support removed to maintain consistent business appearance */
-/* All color variables remain as light theme values */
+/* Theme-aware styling - Supports both light and dark themes */
+/* Dark mode is supported via next-themes and CSS variables */
+/* Color variables adapt based on the active theme */
 
 /* Utility Classes */
 .ds-text-primary { color: var(--text-primary); }
@@ -850,5 +850,5 @@
   outline-offset: 2px;
 }
 
-/* Theme-independent styling - Always light theme for professional business appearance */
-/* Dark mode support removed to maintain consistent business appearance */
+/* Theme-aware styling - Supports both light and dark themes */
+/* Dark mode is fully supported via next-themes */

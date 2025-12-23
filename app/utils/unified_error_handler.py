@@ -268,6 +268,24 @@ def log_error(error: Exception, context: Optional[Dict[str, Any]] = None, includ
     """
     error_context: Dict[str, Any] = context or {}
     
+    # Common endpoints that frequently return 401 (expected behavior - reduce log noise)
+    _common_401_endpoints = [
+        '/api/v1/auth/check',
+        '/api/v1/auth/csrf-token',
+        '/api/v1/notifications',
+        '/api/v1/performance/status',
+        '/api/v1/performance/system-status',
+        '/api/v1/performance/alerts',
+    ]
+    
+    # Filter expected 401 errors to reduce log noise in production
+    should_filter = False
+    if request and isinstance(error, (AuthenticationError, AuthorizationError)):
+        error_path = request.path
+        # Check if this is a common endpoint that expects 401 responses
+        if any(error_path.startswith(endpoint) for endpoint in _common_401_endpoints):
+            should_filter = True
+    
     # Add request context if available
     if request:
         error_context.update({
@@ -324,6 +342,12 @@ def log_error(error: Exception, context: Optional[Dict[str, Any]] = None, includ
     
     # Log with appropriate level
     log = _get_logger()
+    
+    # For filtered 401 errors, use debug level instead of error to reduce noise
+    if should_filter:
+        log.debug(f"Authentication check (expected 401): {request.path if request else 'unknown'}")
+        return
+    
     if include_traceback:
         log.log_exception(error, error_context, include_traceback=True)
     else:

@@ -42,7 +42,8 @@ import {
   Shield,
   Wallet,
   Lock,
-  Unlock
+  Unlock,
+  Save
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -63,6 +64,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { SectionHeader } from '../components/ui/SectionHeader';
 import StandardMetricsCard from '../components/StandardMetricsCard';
 import MetricCard from '../components/MetricCard';
 
@@ -70,8 +72,12 @@ interface Expense {
   id: number;
   description: string;  // Açıklama
   detail: string;  // Detay
+  category: 'inflow' | 'outflow';  // Giren / Çıkan
+  type: 'payment' | 'transfer';  // Ödeme / Transfer
   amount_try: number;  // TRY
   amount_usd: number;  // USD
+  amount_usdt: number;  // USDT
+  mount_currency: string;  // TRY, USD, or USDT - which currency was entered
   status: 'paid' | 'pending' | 'cancelled';  // Durum
   cost_period: string;  // Maliyet Dönemi (e.g., "2025-01" or "Ocak 2025")
   payment_date: string;  // Ödeme Tarihi
@@ -91,12 +97,13 @@ interface Expense {
  * - Lazy Loading: Analytics tab loads only when active
  */
 export default function Accounting() {
+  // Hooks must be called unconditionally at the top
   const { t, currentLanguage } = useLanguage();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { success, error, info } = useNotifications();
   const navigate = useNavigate();
   const [activeTab, handleTabChange] = useTabPersistence<'overview' | 'expenses' | 'analytics' | 'net'>('overview');
-  const [expensesView, setExpensesView] = useState<'all' | 'daily'>('all');
+  const [expensesView, setExpensesView] = useState<'all' | 'daily' | 'internal_revenue'>('all');
   const [netView, setNetView] = useState<'calculator' | 'daily'>('calculator');
   
   // State for loading record from Daily Net to Calculator
@@ -118,7 +125,77 @@ export default function Accounting() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [expenseStatusFilter, setExpenseStatusFilter] = useState<'all' | 'paid' | 'pending' | 'cancelled'>('all');
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<'all' | 'inflow' | 'outflow'>('all');
+  const [expenseTypeFilter, setExpenseTypeFilter] = useState<'all' | 'payment' | 'transfer'>('all');
+  const [expenseDateFrom, setExpenseDateFrom] = useState('');
+  const [expenseDateTo, setExpenseDateTo] = useState('');
+  const [expenseCostPeriod, setExpenseCostPeriod] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  
+  // Analytics & Budget state
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showBudget, setShowBudget] = useState(false);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [budgets, setBudgets] = useState<any[]>([]);
+  const [budgetStatus, setBudgetStatus] = useState<any>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [loadingBudgets, setLoadingBudgets] = useState(false);
+  
+  // Internal Revenue sub-tab state
+  const [internalRevenueView, setInternalRevenueView] = useState<'currency_summary'>('currency_summary');
+  
+  // Monthly Currency Summary state
+  const [selectedMonthPeriod, setSelectedMonthPeriod] = useState<string>(
+    new Date().toISOString().slice(0, 7) // Current month: "YYYY-MM"
+  );
+  const [savedMonths, setSavedMonths] = useState<Array<{month_period: string; is_locked: boolean}>>([]);
+  const [isMonthLocked, setIsMonthLocked] = useState(false);
+  const [isSavingMonth, setIsSavingMonth] = useState(false);
+  const [isLoadingMonth, setIsLoadingMonth] = useState(false);
+  
+  // Editable exchange rates (temporary, not auto-saved)
+  const [tempExchangeRates, setTempExchangeRates] = useState<{[key: string]: string}>({
+    TRY: ''
+  });
+  
+  // Temporary carryover values (not auto-saved)
+  const [tempCarryoverValues, setTempCarryoverValues] = useState<{
+    TRY: number;
+    USD: number;
+    USDT: number;
+  }>({
+    TRY: 0,
+    USD: 0,
+    USDT: 0
+  });
+  
+  // DEVİR (Carryover) values - user can edit manually
+  // Initialize carryover values from localStorage or default to SİMÜLASYON sheet values
+  const [carryoverValues, setCarryoverValues] = useState<{
+    TRY: number;
+    USD: number;
+    USDT: number;
+  }>(() => {
+    // Try to load from localStorage first
+    const saved = localStorage.getItem('expense_carryover_values');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.TRY === 'number' && typeof parsed.USD === 'number' && typeof parsed.USDT === 'number') {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('Failed to parse saved carryover values:', e);
+      }
+    }
+    // Default to SİMÜLASYON sheet values if not found
+    return {
+      TRY: 750000,  // From SİMÜLASYON sheet
+      USD: 5000,    // From SİMÜLASYON sheet
+      USDT: 168000  // From SİMÜLASYON sheet
+    };
+  });
   
   // Pagination state for All Expenses view
   const [currentExpensePage, setCurrentExpensePage] = useState(1);
@@ -131,11 +208,14 @@ export default function Accounting() {
   const [viewingExpense, setViewingExpense] = useState<Expense | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isViewMode, setIsViewMode] = useState(false);
+  const [showAddAnother, setShowAddAnother] = useState(false);
   const [formData, setFormData] = useState({
     description: '',
     detail: '',
-    amount_try: '',
-    amount_usd: '',
+    category: 'inflow' as 'inflow' | 'outflow',
+    type: 'payment' as 'payment' | 'transfer',
+    amount: '',  // Single amount field - user enters amount here
+    mount_currency: 'TRY' as 'TRY' | 'USD' | 'USDT',  // Selected currency
     status: 'pending' as 'paid' | 'pending' | 'cancelled',
     cost_period: '',
     payment_date: '',
@@ -143,10 +223,44 @@ export default function Accounting() {
     source: ''
   });
   
+  // Calculated amounts (read-only, shown to user)
+  const [calculatedAmounts, setCalculatedAmounts] = useState({
+    amount_try: 0,
+    amount_usd: 0,
+    amount_usdt: 0
+  });
+  
   // Exchange rate auto-conversion state
-  const [baseCurrency, setBaseCurrency] = useState<'TRY' | 'USD'>('TRY');
   const [currentRate, setCurrentRate] = useState<number | null>(null);
   const [fetchingRate, setFetchingRate] = useState(false);
+  
+  // Calculate amounts based on selected currency and entered amount
+  useEffect(() => {
+    const amount = parseFloat(formData.amount) || 0;
+    const exchangeRate = currentRate || 42.57;
+    
+    let calculated = {
+      amount_try: 0,
+      amount_usd: 0,
+      amount_usdt: 0
+    };
+    
+    if (formData.mount_currency === 'TRY') {
+      calculated.amount_try = amount;
+      calculated.amount_usd = exchangeRate > 0 ? amount / exchangeRate : 0;
+      calculated.amount_usdt = calculated.amount_usd; // USDT = USD (1:1)
+    } else if (formData.mount_currency === 'USD') {
+      calculated.amount_usd = amount;
+      calculated.amount_try = amount * exchangeRate;
+      calculated.amount_usdt = amount; // USDT = USD (1:1)
+    } else if (formData.mount_currency === 'USDT') {
+      calculated.amount_usdt = amount;
+      calculated.amount_usd = amount; // USDT = USD (1:1)
+      calculated.amount_try = amount * exchangeRate;
+    }
+    
+    setCalculatedAmounts(calculated);
+  }, [formData.amount, formData.mount_currency, currentRate]);
 
   // --- Net Tab inner component ---
   function NetCalculatorInner({ expenses, recordToLoad, onRecordLoaded }: { expenses: Expense[]; recordToLoad: any | null; onRecordLoaded: () => void }) {
@@ -1151,7 +1265,7 @@ export default function Accounting() {
       try {
         setSavingNet(true);
         setErrorNet(null);
-        const resp = await api.post(`/api/v1/accounting/net`, {
+        const resp = await api.post(`/accounting/net`, {
           date: result.date,
           net_cash_usd: result.net_cash_usd,
           expenses_usd: result.expenses_usd,
@@ -1784,7 +1898,7 @@ export default function Accounting() {
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {t('accounting.net.enable_manual_mode') || 'Enable Manual Override'}
+                  {t('accounting.net.enable_manual_mode')}
                 </h3>
                 <button
                   onClick={() => {
@@ -1797,7 +1911,7 @@ export default function Accounting() {
                 </button>
               </div>
               <p className="text-sm text-gray-600 mb-4">
-                {t('accounting.net.enter_confirmation_code') || 'Please enter the 4-digit confirmation code to enable manual override for Current Cash.'}
+                {t('accounting.net.enter_confirmation_code')}
               </p>
               <div className="mb-4">
                 <Input
@@ -1961,11 +2075,11 @@ export default function Accounting() {
 
             {/* Net Result */}
             <UnifiedCard variant="elevated" className="overflow-hidden">
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 border-l-4 border-green-600">
+              <div className="bg-gray-50 p-6 border-l-4 border-gray-600">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-green-100 rounded-xl">
-                      <TrendingUp className="h-6 w-6 text-green-700" />
+                    <div className="p-3 bg-gray-100 rounded-xl">
+                      <TrendingUp className="h-6 w-6 text-gray-700" />
                     </div>
                     <div>
                       <p className="text-xs font-medium text-green-700 uppercase tracking-wider mb-1">{t('accounting.net.net_result')}</p>
@@ -2032,11 +2146,11 @@ export default function Accounting() {
 
             {/* Reconciliation */}
             <UnifiedCard variant="elevated" className="overflow-hidden">
-              <div className={`p-6 border-l-4 ${Number(result.fark_bottom_usd) === 0 ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-600' : 'bg-gradient-to-r from-red-50 to-rose-50 border-red-600'}`}>
+              <div className={`p-6 border-l-4 ${Number(result.fark_bottom_usd) === 0 ? 'bg-gray-50 border-gray-600' : 'bg-gray-50 border-gray-600'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-xl ${Number(result.fark_bottom_usd) === 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                      <AlertCircle className={`h-6 w-6 ${Number(result.fark_bottom_usd) === 0 ? 'text-green-700' : 'text-red-700'}`} />
+                    <div className={`p-3 rounded-xl ${Number(result.fark_bottom_usd) === 0 ? 'bg-gray-100' : 'bg-gray-100'}`}>
+                      <AlertCircle className={`h-6 w-6 ${Number(result.fark_bottom_usd) === 0 ? 'text-gray-700' : 'text-gray-700'}`} />
                     </div>
                     <div>
                       <p className={`text-xs font-medium uppercase tracking-wider mb-1 ${Number(result.fark_bottom_usd) === 0 ? 'text-green-700' : 'text-red-700'}`}>
@@ -2265,10 +2379,10 @@ export default function Accounting() {
       }
 
       try {
-        const resp = await api.delete(`/api/v1/accounting/net/${editingRecord.date}`, {
+        const resp = await api.delete(`/accounting/net/${editingRecord.date}`, {
           confirmation_code: editSecurityCode
         });
-        const data = await api.parseResponse(resp);
+        const data = await api.parseResponse(resp) as { success?: boolean };
         if (data && data.success) {
           success('Record deleted successfully');
           loadHistoricalRecords();
@@ -2400,7 +2514,7 @@ export default function Accounting() {
 
               {/* Status Filter */}
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Status</label>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">{t('accounting.status')}</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => {
@@ -2409,9 +2523,9 @@ export default function Accounting() {
                   }}
                   className="w-full h-10 px-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="all">All Status</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="unbalanced">Unbalanced</option>
+                  <option value="all">{t('accounting.all_status')}</option>
+                  <option value="balanced">{t('accounting.net.balanced')}</option>
+                  <option value="unbalanced">{t('accounting.net.unbalanced')}</option>
                 </select>
               </div>
             </div>
@@ -2569,7 +2683,7 @@ export default function Accounting() {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
+                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-600 uppercase">{t('common.date')}</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-600 uppercase">Change (USD)</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-600 uppercase">Change (%)</th>
                           <th className="px-4 py-2 text-center text-xs font-medium text-gray-600 uppercase">Trend</th>
@@ -2715,7 +2829,7 @@ export default function Accounting() {
                             )}
                           </button>
                         </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">Actions</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-600 uppercase tracking-wider">{t('common.actions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -2938,7 +3052,7 @@ export default function Accounting() {
         {showComparisonModal && comparisonDate1 && comparisonDate2 && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-50 to-blue-50 px-6 py-5 border-b border-gray-200">
+              <div className="bg-gray-50 px-6 py-5 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
@@ -3171,7 +3285,7 @@ export default function Accounting() {
                     </div>
 
                     {/* Summary Comparison */}
-                    <div className="bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                       <h5 className="text-sm font-semibold text-gray-900 mb-3">Overall Comparison</h5>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-xs">
@@ -3202,7 +3316,7 @@ export default function Accounting() {
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-600">Status Comparison:</span>
+                          <span className="text-gray-600">{t('accounting.status_comparison')}:</span>
                           <span className="font-bold">
                             {Number(comparisonDate1.fark_bottom_usd) === 0 ? '✓' : '✗'} → {Number(comparisonDate2.fark_bottom_usd) === 0 ? '✓' : '✗'}
                           </span>
@@ -3228,26 +3342,136 @@ export default function Accounting() {
   // Security PIN for editing
   const [securityPin, setSecurityPin] = useState('');
 
+  // Fetch exchange rate on mount for currency summary
+  useEffect(() => {
+    if (isAuthenticated && !authLoading && activeTab === 'expenses' && !currentRate) {
+      fetchCurrentRate().catch(() => {
+        // Silently fail - will use default rate
+      });
+    }
+  }, [isAuthenticated, authLoading, activeTab]);
+
   // Load expenses from API on component mount
   useEffect(() => {
     const loadExpenses = async () => {
-      if (!isAuthenticated || authLoading) return;
+      // #region agent log (dev only)
+      if (import.meta.env.DEV) {
+        try {
+          fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'Accounting.tsx:3233',
+              message: 'loadExpenses useEffect triggered',
+              data: { isAuthenticated, authLoading, activeTab },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run2',
+              hypothesisId: 'C'
+            })
+          }).catch(() => {});
+        } catch {}
+      }
+      // #endregion
+      
+      if (!isAuthenticated || authLoading) {
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          try {
+            fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                location: 'Accounting.tsx:3234',
+                message: 'Skipping expense load - not authenticated or loading',
+                data: { isAuthenticated, authLoading },
+                timestamp: Date.now(),
+                sessionId: 'debug-session',
+                runId: 'run2',
+                hypothesisId: 'C'
+              })
+            }).catch(() => {});
+          } catch {}
+        }
+        // #endregion
+        return;
+      }
       
       try {
         setLoading(true);
         setLoadError(null);
         logger.debug('Loading expenses from API...');
         
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          try {
+            fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                location: 'Accounting.tsx:3258',
+                message: 'About to call api.get(/accounting/expenses)',
+                data: {},
+                timestamp: Date.now(),
+                sessionId: 'debug-session',
+                runId: 'run2',
+                hypothesisId: 'C'
+              })
+            }).catch(() => {});
+          } catch {}
+        }
+        // #endregion
         const response = await api.get('/accounting/expenses');
+        
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          try {
+            fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                location: 'Accounting.tsx:3258',
+                message: 'API response received',
+                data: { ok: response.ok, status: (response as any).status },
+                timestamp: Date.now(),
+                sessionId: 'debug-session',
+                runId: 'run2',
+                hypothesisId: 'C'
+              })
+            }).catch(() => {});
+          } catch {}
+        }
+        // #endregion
         
         if (response.ok) {
           const data: any = await api.parseResponse(response);
           logger.debug('Expenses loaded:', data);
           
+          // #region agent log (dev only)
+          if (import.meta.env.DEV) {
+            try {
+              fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  location: 'Accounting.tsx:3265',
+                  message: 'Expenses API response parsed',
+                  data: { success: data.success, expensesCount: Array.isArray(data.expenses) ? data.expenses.length : 0, message: data.message, error: data.error },
+                  timestamp: Date.now(),
+                  sessionId: 'debug-session',
+                  runId: 'run2',
+                  hypothesisId: 'C'
+                })
+              }).catch(() => {});
+            } catch {}
+          }
+          // #endregion
+          
           if (data.success && Array.isArray(data.expenses)) {
             setExpenses(data.expenses);
           } else {
             logger.warn('Invalid expenses response structure:', data);
+            setLoadError(data.error || 'Invalid response format');
             setExpenses([]);
           }
         } else {
@@ -3257,7 +3481,26 @@ export default function Accounting() {
         }
       } catch (err) {
         logger.error('Error loading expenses:', err);
-        setLoadError('Error loading expenses');
+        // #region agent log (dev only)
+        if (import.meta.env.DEV) {
+          try {
+            fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                location: 'Accounting.tsx:3280',
+                message: 'Error loading expenses (catch block)',
+                data: { error: err instanceof Error ? err.message : String(err) },
+                timestamp: Date.now(),
+                sessionId: 'debug-session',
+                runId: 'run2',
+                hypothesisId: 'C'
+              })
+            }).catch(() => {});
+          } catch {}
+        }
+        // #endregion
+        setLoadError('Error loading expenses: ' + (err instanceof Error ? err.message : String(err)));
         setExpenses([]);
       } finally {
         setLoading(false);
@@ -3265,7 +3508,7 @@ export default function Accounting() {
     };
     
     loadExpenses();
-  }, [isAuthenticated, authLoading]);
+  }, [isAuthenticated, authLoading, activeTab]);
 
   // Debounce search term for better performance
   useEffect(() => {
@@ -3276,22 +3519,213 @@ export default function Accounting() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // ============================================================================
+  // MONTHLY CURRENCY SUMMARY FUNCTIONS
+  // ============================================================================
+  
+  // Load saved months list
+  const loadSavedMonths = useCallback(async () => {
+    try {
+      const response = await api.get('/accounting/currency-summary/months');
+      if (response.ok) {
+        const data = await api.parseResponse(response);
+        if (data.success) {
+          setSavedMonths(data.months || []);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading saved months:', err);
+    }
+  }, []);
+  
+  // Load month data
+  const loadMonthData = useCallback(async (monthPeriod: string) => {
+    try {
+      setIsLoadingMonth(true);
+      setSelectedMonthPeriod(monthPeriod);
+      
+      const response = await api.get(`/accounting/currency-summary/${monthPeriod}`);
+      
+      if (response.ok) {
+        const data = await api.parseResponse(response);
+        if (data.success && data.is_saved && data.currencies.length > 0) {
+          // Load saved data
+          setIsMonthLocked(data.is_locked);
+          
+          // Populate DEVİR and KUR from saved data
+          const savedCarryover: any = { TRY: 0, USD: 0, USDT: 0 };
+          const savedRates: any = { TRY: '' };
+          
+          data.currencies.forEach((curr: any) => {
+            savedCarryover[curr.currency] = curr.devir || 0;
+            if (curr.currency === 'TRY' && curr.exchange_rate) {
+              savedRates.TRY = curr.exchange_rate.toString();
+            }
+          });
+          
+          setTempCarryoverValues(savedCarryover);
+          setTempExchangeRates(savedRates);
+          
+          info(`Loaded data for ${monthPeriod}`);
+        } else {
+          // No saved data - current month or new month
+          setIsMonthLocked(false);
+          
+          // Use current exchange rate for TRY
+          if (currentRate && currentRate > 0) {
+            setTempExchangeRates({ TRY: currentRate.toFixed(2) });
+          }
+          
+          // Check if we have localStorage values for current month
+          const currentMonth = new Date().toISOString().slice(0, 7);
+          if (monthPeriod === currentMonth) {
+            const saved = localStorage.getItem('expense_carryover_values');
+            if (saved) {
+              try {
+                const parsed = JSON.parse(saved);
+                setTempCarryoverValues(parsed);
+              } catch (e) {
+                // Use defaults
+                setTempCarryoverValues({ TRY: 750000, USD: 5000, USDT: 168000 });
+              }
+            } else {
+              setTempCarryoverValues({ TRY: 750000, USD: 5000, USDT: 168000 });
+            }
+          } else {
+            // For other months, start with zeros
+            setTempCarryoverValues({ TRY: 0, USD: 0, USDT: 0 });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error loading month data:', err);
+      error('Failed to load month data');
+    } finally {
+      setIsLoadingMonth(false);
+    }
+  }, [currentRate, info, error]);
+  
+  // Save month data
+  const handleSaveCurrencySummary = useCallback(async () => {
+    try {
+      setIsSavingMonth(true);
+      
+      // Prepare data from current currencySummary calculation
+      const currencies = currencySummary.map(item => ({
+        currency: item.currency,
+        devir: tempCarryoverValues[item.currency as 'TRY' | 'USD' | 'USDT'] || 0,
+        exchange_rate: item.currency === 'TRY' && tempExchangeRates.TRY ? parseFloat(tempExchangeRates.TRY) : null,
+        inflow: item.inflow,
+        outflow: item.outflow,
+        net: item.net,
+        usd_equivalent: item.usdEquivalent
+      }));
+      
+      const response = await api.post('/accounting/currency-summary', {
+        month_period: selectedMonthPeriod,
+        currencies
+      });
+      
+      if (response.ok) {
+        const data = await api.parseResponse(response);
+        if (data.success) {
+          success('Month data saved successfully!');
+          loadSavedMonths(); // Refresh month list
+          
+          // Save to localStorage for current month
+          const currentMonth = new Date().toISOString().slice(0, 7);
+          if (selectedMonthPeriod === currentMonth) {
+            localStorage.setItem('expense_carryover_values', JSON.stringify(tempCarryoverValues));
+          }
+        } else {
+          error(data.error || 'Failed to save month data');
+        }
+      } else {
+        error('Failed to save month data');
+      }
+    } catch (err) {
+      console.error('Error saving month data:', err);
+      error('Failed to save month data');
+    } finally {
+      setIsSavingMonth(false);
+    }
+  }, [selectedMonthPeriod, currencySummary, tempCarryoverValues, tempExchangeRates, success, error, loadSavedMonths]);
+  
+  // Lock month
+  const handleLockMonth = useCallback(async () => {
+    if (!confirm(`Lock ${selectedMonthPeriod}? You won't be able to edit it without unlocking.`)) {
+      return;
+    }
+    
+    try {
+      const response = await api.post(`/accounting/currency-summary/${selectedMonthPeriod}/lock`);
+      if (response.ok) {
+        const data = await api.parseResponse(response);
+        if (data.success) {
+          setIsMonthLocked(true);
+          success('Month locked successfully');
+          loadSavedMonths();
+        } else {
+          error(data.error || 'Failed to lock month');
+        }
+      }
+    } catch (err) {
+      console.error('Error locking month:', err);
+      error('Failed to lock month');
+    }
+  }, [selectedMonthPeriod, success, error, loadSavedMonths]);
+  
+  // Unlock month
+  const handleUnlockMonth = useCallback(async () => {
+    try {
+      const response = await api.post(`/accounting/currency-summary/${selectedMonthPeriod}/unlock`);
+      if (response.ok) {
+        const data = await api.parseResponse(response);
+        if (data.success) {
+          setIsMonthLocked(false);
+          success('Month unlocked successfully');
+          loadSavedMonths();
+        } else {
+          error(data.error || 'Failed to unlock month');
+        }
+      }
+    } catch (err) {
+      console.error('Error unlocking month:', err);
+      error('Failed to unlock month');
+    }
+  }, [selectedMonthPeriod, success, error, loadSavedMonths]);
+  
+  // Load saved months on mount
+  useEffect(() => {
+    loadSavedMonths();
+  }, [loadSavedMonths]);
+  
+  // Load current month data on mount
+  useEffect(() => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    loadMonthData(currentMonth);
+  }, [loadMonthData]);
+
 // Optimized expense modal handlers with useCallback
   const handleOpenAddExpense = useCallback(() => {
     setEditingExpense(null);
     setViewingExpense(null);
     setIsViewMode(false);
+    setShowAddAnother(false);
     setFormData({
       description: '',
       detail: '',
-      amount_try: '',
-      amount_usd: '',
+      category: 'inflow',
+      type: 'payment',
+      amount: '',
+      mount_currency: 'TRY',
       status: 'pending',
       cost_period: '',
       payment_date: '',
       payment_period: '',
       source: ''
     });
+    setCalculatedAmounts({ amount_try: 0, amount_usd: 0, amount_usdt: 0 });
     setShowExpenseModal(true);
   }, []);
 
@@ -3299,16 +3733,36 @@ export default function Accounting() {
     setViewingExpense(expense);
     setEditingExpense(null);
     setIsViewMode(true);
+    // Determine which amount to show based on mount_currency
+    const mountCurrency = expense.mount_currency || 'TRY';
+    let amount = '0';
+    if (mountCurrency === 'TRY') {
+      amount = expense.amount_try?.toString() || '0';
+    } else if (mountCurrency === 'USD') {
+      amount = expense.amount_usd?.toString() || '0';
+    } else if (mountCurrency === 'USDT') {
+      amount = expense.amount_usdt?.toString() || '0';
+    }
+    
     setFormData({
       description: expense.description,
       detail: expense.detail,
-      amount_try: expense.amount_try.toString(),
-      amount_usd: expense.amount_usd.toString(),
+      category: expense.category || 'inflow',
+      type: expense.type || 'payment',
+      amount: amount,
+      mount_currency: mountCurrency,
       status: expense.status,
       cost_period: expense.cost_period,
       payment_date: expense.payment_date,
       payment_period: expense.payment_period,
       source: expense.source
+    });
+    
+    // Set calculated amounts from expense data
+    setCalculatedAmounts({
+      amount_try: expense.amount_try || 0,
+      amount_usd: expense.amount_usd || 0,
+      amount_usdt: expense.amount_usdt || 0
     });
     setShowExpenseModal(true);
   }, []);
@@ -3325,16 +3779,36 @@ export default function Accounting() {
     setEditingExpense(expense);
     setViewingExpense(null);
     setIsViewMode(false);
+    // Determine which amount to show based on mount_currency
+    const mountCurrency = expense.mount_currency || 'TRY';
+    let amount = '0';
+    if (mountCurrency === 'TRY') {
+      amount = expense.amount_try?.toString() || '0';
+    } else if (mountCurrency === 'USD') {
+      amount = expense.amount_usd?.toString() || '0';
+    } else if (mountCurrency === 'USDT') {
+      amount = expense.amount_usdt?.toString() || '0';
+    }
+    
     setFormData({
       description: expense.description,
       detail: expense.detail,
-      amount_try: expense.amount_try.toString(),
-      amount_usd: expense.amount_usd.toString(),
+      category: expense.category || 'inflow',
+      type: expense.type || 'payment',
+      amount: amount,
+      mount_currency: mountCurrency,
       status: expense.status,
       cost_period: expense.cost_period,
       payment_date: expense.payment_date,
       payment_period: expense.payment_period,
       source: expense.source
+    });
+    
+    // Set calculated amounts from expense data
+    setCalculatedAmounts({
+      amount_try: expense.amount_try || 0,
+      amount_usd: expense.amount_usd || 0,
+      amount_usdt: expense.amount_usdt || 0
     });
     setSecurityPin('4561'); // Set PIN since it was already validated
     setShowExpenseModal(true);
@@ -3345,20 +3819,24 @@ export default function Accounting() {
     setEditingExpense(null);
     setViewingExpense(null);
     setIsViewMode(false);
+    setShowAddAnother(false);
     setBaseCurrency('TRY');
     setCurrentRate(null);
     setSecurityPin('');
     setFormData({
       description: '',
       detail: '',
-      amount_try: '',
-      amount_usd: '',
+      category: 'inflow',
+      type: 'payment',
+      amount: '',
+      mount_currency: 'TRY',
       status: 'pending',
       cost_period: '',
       payment_date: '',
       payment_period: '',
       source: ''
     });
+    setCalculatedAmounts({ amount_try: 0, amount_usd: 0, amount_usdt: 0 });
   }, []);
 
   // Fetch current exchange rate
@@ -3398,80 +3876,205 @@ export default function Accounting() {
     }
   }, [t]);
 
-  // Auto-convert currency based on base currency
-  const handleAutoConvert = useCallback(async () => {
-    const rate = currentRate || await fetchCurrentRate();
-    if (!rate) return;
+  // Auto-conversion is now handled automatically via useEffect based on mount_currency
 
-    if (baseCurrency === 'TRY') {
-      // User entered TRY, calculate USD
-      const tryAmount = parseFloat(formData.amount_try);
-      if (!isNaN(tryAmount) && tryAmount > 0) {
-        const usdAmount = tryAmount / rate;
-        setFormData(prev => ({ ...prev, amount_usd: usdAmount.toFixed(2) }));
-        info(t('accounting.converted_to_usd'));
+  const handleSaveExpense = useCallback(async () => {
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'Accounting.tsx:3425',
+          message: 'handleSaveExpense called',
+          data: { isEdit: !!editingExpense, expensesCount: expenses.length },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          runId: 'run2',
+          hypothesisId: 'A'
+        })
+      }).catch(() => {});
+    } catch {}
+    // #endregion
+    
+    try {
+      setLoading(true);
+      
+      if (editingExpense) {
+        // #region agent log
+        try {
+          fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'Accounting.tsx:3428',
+              message: 'Updating expense via API',
+              data: { expenseId: editingExpense.id },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run2',
+              hypothesisId: 'A'
+            })
+          }).catch(() => {});
+        } catch {}
+        // #endregion
+        
+        // Update existing expense via API
+        const response = await api.put(`/accounting/expenses/${editingExpense.id}`, {
+          description: formData.description,
+          detail: formData.detail,
+          category: formData.category,
+          type: formData.type,
+          amount_try: calculatedAmounts.amount_try,
+          amount_usd: calculatedAmounts.amount_usd,
+          amount_usdt: calculatedAmounts.amount_usdt,
+          mount_currency: formData.mount_currency,
+          status: formData.status,
+          cost_period: formData.cost_period,
+          payment_date: formData.payment_date || null,
+          payment_period: formData.payment_period,
+          source: formData.source
+        });
+        
+        if (response.ok) {
+          const data: any = await api.parseResponse(response);
+          if (data.success && data.expense) {
+            // Update local state with server response
+            setExpenses(expenses.map(exp => 
+              exp.id === editingExpense.id ? data.expense : exp
+            ));
+            success(t('accounting.expense_updated_success'));
+            // Close modal after update (no "Add Another" for updates)
+            handleCloseExpenseModal();
+          } else {
+            error(data.error || t('accounting.failed_to_update_expense'));
+          }
+        } else {
+          error(t('accounting.failed_to_update_expense'));
+        }
+      } else {
+        // #region agent log
+        try {
+          fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              location: 'Accounting.tsx:3448',
+              message: 'Adding new expense via API',
+              data: { expensesCount: expenses.length },
+              timestamp: Date.now(),
+              sessionId: 'debug-session',
+              runId: 'run2',
+              hypothesisId: 'A'
+            })
+          }).catch(() => {});
+        } catch {}
+        // #endregion
+        
+        // Create new expense via API
+        const response = await api.post('/accounting/expenses', {
+          description: formData.description,
+          detail: formData.detail,
+          category: formData.category,
+          type: formData.type,
+          amount_try: calculatedAmounts.amount_try,
+          amount_usd: calculatedAmounts.amount_usd,
+          amount_usdt: calculatedAmounts.amount_usdt,
+          mount_currency: formData.mount_currency,
+          status: formData.status,
+          cost_period: formData.cost_period,
+          payment_date: formData.payment_date || null,
+          payment_period: formData.payment_period,
+          source: formData.source
+        });
+        
+        if (response.ok) {
+          const data: any = await api.parseResponse(response);
+          if (data.success && data.expense) {
+            // Add new expense to local state
+            setExpenses([...expenses, data.expense]);
+            success(t('accounting.expense_added_success'));
+            // Show "Add Another" option instead of closing
+            setShowAddAnother(true);
+            // Reset form for adding another expense
+            setFormData({
+              description: '',
+              detail: '',
+              category: 'inflow',
+              type: 'payment',
+              amount: '',
+              mount_currency: 'TRY',
+              status: 'pending',
+              cost_period: '',
+              payment_date: '',
+              payment_period: '',
+              source: ''
+            });
+            setCalculatedAmounts({ amount_try: 0, amount_usd: 0, amount_usdt: 0 });
+            setCurrentRate(null);
+          } else {
+            error(data.error || 'Failed to create expense');
+          }
+        } else {
+          error('Failed to create expense');
+        }
       }
-    } else {
-      // User entered USD, calculate TRY
-      const usdAmount = parseFloat(formData.amount_usd);
-      if (!isNaN(usdAmount) && usdAmount > 0) {
-        const tryAmount = usdAmount * rate;
-        setFormData(prev => ({ ...prev, amount_try: tryAmount.toFixed(2) }));
-        info(t('accounting.converted_to_try'));
+    } catch (err) {
+      logger.error('Error saving expense:', err);
+      error('Error saving expense. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [editingExpense, expenses, formData, handleCloseExpenseModal, success, error, t]);
+
+  const handleDeleteExpense = useCallback(async (id: number) => {
+    // #region agent log
+    try {
+      fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'Accounting.tsx:3469',
+          message: 'handleDeleteExpense called',
+          data: { expenseId: id },
+          timestamp: Date.now(),
+          sessionId: 'debug-session',
+          runId: 'run2',
+          hypothesisId: 'A'
+        })
+      }).catch(() => {});
+    } catch {}
+    // #endregion
+    
+    if (!confirm(t('accounting.confirm_delete_expense'))) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Delete expense via API
+      const response = await api.delete(`/accounting/expenses/${id}`);
+      
+      if (response.ok) {
+        const data: any = await api.parseResponse(response);
+        if (data.success) {
+          // Remove from local state
+          setExpenses(expenses.filter(exp => exp.id !== id));
+          success(t('accounting.expense_deleted_success'));
+        } else {
+          error(data.error || 'Failed to delete expense');
+        }
+      } else {
+        error('Failed to delete expense');
       }
+    } catch (err) {
+      logger.error('Error deleting expense:', err);
+      error('Error deleting expense. Please try again.');
+    } finally {
+      setLoading(false);
     }
-  }, [baseCurrency, currentRate, formData.amount_try, formData.amount_usd, fetchCurrentRate, t]);
-
-  const handleSaveExpense = useCallback(() => {
-    // Update existing expense (PIN already validated when opening edit modal)
-    if (editingExpense) {
-      // Update existing expense
-      setExpenses(expenses.map(exp => 
-        exp.id === editingExpense.id 
-          ? {
-              ...exp,
-              description: formData.description,
-              detail: formData.detail,
-              amount_try: parseFloat(formData.amount_try) || 0,
-              amount_usd: parseFloat(formData.amount_usd) || 0,
-              status: formData.status,
-              cost_period: formData.cost_period,
-              payment_date: formData.payment_date,
-              payment_period: formData.payment_period,
-              source: formData.source,
-              updated_at: new Date().toISOString()
-            }
-          : exp
-      ));
-      success(t('accounting.expense_updated_success'));
-    } else {
-      // Add new expense
-      const newExpense: Expense = {
-        id: Math.max(...expenses.map(e => e.id), 0) + 1,
-        description: formData.description,
-        detail: formData.detail,
-        amount_try: parseFloat(formData.amount_try) || 0,
-        amount_usd: parseFloat(formData.amount_usd) || 0,
-        status: formData.status,
-        cost_period: formData.cost_period,
-        payment_date: formData.payment_date,
-        payment_period: formData.payment_period,
-        source: formData.source,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      setExpenses([...expenses, newExpense]);
-      success(t('accounting.expense_added_success'));
-    }
-    handleCloseExpenseModal();
-  }, [editingExpense, expenses, formData, handleCloseExpenseModal, securityPin, success, t]);
-
-  const handleDeleteExpense = useCallback((id: number) => {
-    if (confirm(t('accounting.confirm_delete_expense'))) {
-      setExpenses(expenses.filter(exp => exp.id !== id));
-      success(t('accounting.expense_deleted_success'));
-    }
-  }, [expenses, success, t]);
+  }, [expenses, success, error, t]);
 
   // Memoized filtered expenses for performance (using debounced search)
   const filteredExpenses = useMemo(() => {
@@ -3482,10 +4085,11 @@ export default function Accounting() {
         expense.source.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
       
       const matchesStatus = expenseStatusFilter === 'all' || expense.status === expenseStatusFilter;
+      const matchesCategory = expenseCategoryFilter === 'all' || expense.category === expenseCategoryFilter;
       
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && matchesCategory;
     });
-  }, [expenses, debouncedSearchTerm, expenseStatusFilter]);
+  }, [expenses, debouncedSearchTerm, expenseStatusFilter, expenseCategoryFilter]);
 
   // Paginated expenses for All Expenses view
   const paginatedExpenses = useMemo(() => {
@@ -3499,7 +4103,7 @@ export default function Accounting() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentExpensePage(1);
-  }, [debouncedSearchTerm, expenseStatusFilter]);
+  }, [debouncedSearchTerm, expenseStatusFilter, expenseCategoryFilter]);
 
   // Memoized totals for performance
   const expenseTotals = useMemo(() => {
@@ -3509,6 +4113,100 @@ export default function Accounting() {
       count: expenses.length
     };
   }, [expenses]);
+
+  // Currency-based summary (like SİMÜLASYON sheet)
+  const currencySummary = useMemo(() => {
+    // Always show all three currencies (company cash/assets)
+    const summary: Record<string, {
+      currency: string;
+      carryover: number; // DEVİR - opening balance (user can edit)
+      inflow: number; // GİREN - total inflow
+      outflow: number; // ÇIKAN - total outflow
+      net: number; // NET = carryover + inflow - outflow
+      usdEquivalent: number; // USD conversion
+    }> = {
+      'TRY': { currency: 'TRY', carryover: tempCarryoverValues.TRY, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 },
+      'USD': { currency: 'USD', carryover: tempCarryoverValues.USD, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 },
+      'USDT': { currency: 'USDT', carryover: tempCarryoverValues.USDT, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 }
+    };
+
+    // Safety check - if no expenses, return empty summary with carryover values
+    if (!expenses || expenses.length === 0) {
+      // Still calculate net and USD equivalent even with no expenses
+      // Use temp exchange rate if available, otherwise fall back to currentRate
+      const exchangeRate = (tempExchangeRates.TRY && parseFloat(tempExchangeRates.TRY) > 0) 
+        ? parseFloat(tempExchangeRates.TRY)
+        : (currentRate && currentRate > 0) ? currentRate : 42.57;
+      Object.keys(summary).forEach(key => {
+        const item = summary[key];
+        item.net = item.carryover + item.inflow - item.outflow;
+        if (key === 'USD' || key === 'USDT') {
+          item.usdEquivalent = item.net;
+        } else if (key === 'TRY') {
+          item.usdEquivalent = exchangeRate > 0 ? item.net / exchangeRate : 0;
+        }
+      });
+      // Return currencies in SİMÜLASYON order: USD, TRY, USDT
+      return [
+        summary['USD'],
+        summary['TRY'],
+        summary['USDT']
+      ];
+    }
+
+    // Calculate totals per currency
+    expenses.forEach(expense => {
+      if (!expense) return; // Safety check
+      
+      const currency = expense.mount_currency || 'TRY';
+      const currencyKey = currency === 'TRY' ? 'TRY' : currency === 'USD' ? 'USD' : 'USDT';
+      
+      if (!summary[currencyKey]) {
+        summary[currencyKey] = { currency: currencyKey, carryover: 0, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 };
+      }
+
+      // Get amount based on currency
+      let amount = 0;
+      if (currency === 'TRY') {
+        amount = expense.amount_try || 0;
+      } else if (currency === 'USD') {
+        amount = expense.amount_usd || 0;
+      } else if (currency === 'USDT') {
+        amount = expense.amount_usdt || 0;
+      }
+
+      // Add to inflow or outflow based on category
+      if (expense.category === 'inflow') {
+        summary[currencyKey].inflow += amount;
+      } else if (expense.category === 'outflow') {
+        summary[currencyKey].outflow += amount;
+      }
+    });
+
+    // Calculate net and USD equivalent (using temp exchange rate if available)
+    const exchangeRate = (tempExchangeRates.TRY && parseFloat(tempExchangeRates.TRY) > 0) 
+      ? parseFloat(tempExchangeRates.TRY)
+      : (currentRate && currentRate > 0) ? currentRate : 42.57; // Use temp rate, fetched rate, or default
+    
+    Object.keys(summary).forEach(key => {
+      const item = summary[key];
+      item.net = item.carryover + item.inflow - item.outflow;
+      
+      // Convert to USD
+      if (key === 'USD' || key === 'USDT') {
+        item.usdEquivalent = item.net; // Already in USD
+      } else if (key === 'TRY') {
+        item.usdEquivalent = exchangeRate > 0 ? item.net / exchangeRate : 0; // Convert TRY to USD
+      }
+    });
+
+    // Return currencies in SİMÜLASYON order: USD, TRY, USDT
+    return [
+      summary['USD'],
+      summary['TRY'],
+      summary['USDT']
+    ];
+  }, [expenses, currentRate, tempCarryoverValues, tempExchangeRates]);
 
   // Memoized daily summary grouped by payment_date for selected month/year
   const dailySummary = useMemo(() => {
@@ -3631,22 +4329,20 @@ if (authLoading) {
 
       {/* Page Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-              <Calculator className="h-8 w-8 text-gray-600" />
-              Accounting
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">Financial records and accounting management</p>
-            <div className="flex items-center gap-2 mt-2">
+        <SectionHeader
+          title="Accounting"
+          description="Financial records and accounting management"
+          icon={Calculator}
+          actions={
+            <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border border-gray-200 font-mono">Ctrl+K</span>
               <span className="text-xs text-gray-500">Search</span>
               <span className="text-gray-300">•</span>
               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border border-gray-200 font-mono">Ctrl+N</span>
               <span className="text-xs text-gray-500">New Expense</span>
             </div>
-          </div>
-        </div>
+          }
+        />
       </div>
 
       {/* Tab Navigation */}
@@ -3699,69 +4395,82 @@ if (authLoading) {
             {/* Sub-Navigation for Expenses */}
             {/* Creative Sub-Tab Navigation */}
             <div className="relative w-full">
-              {/* Background with glassmorphism effect */}
-              <div className="relative bg-gradient-to-r from-slate-50/90 via-white/80 to-slate-50/90 backdrop-blur-sm border border-slate-200/60 rounded-xl shadow-lg shadow-slate-200/20 p-1.5">
+              {/* Background */}
+              <div className="relative bg-gray-50 border border-gray-200 rounded-lg p-1.5">
                 {/* Animated background indicator */}
                 <div 
-                  className={`absolute top-1.5 bottom-1.5 w-[calc(50%-0.375rem)] bg-gradient-to-r from-blue-500/10 via-blue-600/15 to-blue-500/10 backdrop-blur-sm border border-blue-200/40 rounded-lg shadow-sm transition-all duration-300 ease-out ${
+                  className={`absolute top-1.5 bottom-1.5 w-[calc(33.333%-0.5rem)] bg-white border border-gray-300 rounded-md transition-all duration-300 ease-out ${
                     expensesView === 'all' 
                       ? 'left-1.5' 
-                      : 'right-1.5'
+                      : expensesView === 'daily'
+                      ? 'left-[calc(33.333%+0.25rem)]'
+                      : 'left-[calc(66.666%+1rem)]'
                   }`}
                 />
                 
                 {/* Tab buttons */}
-                <div className="relative grid grid-cols-2 gap-1.5">
+                <div className="relative grid grid-cols-3 gap-1.5">
                   <button
                     onClick={() => setExpensesView('all')}
-                    className={`group relative flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-lg font-semibold text-sm transition-all duration-300 ease-out outline-none focus:outline-none focus:ring-0 ${
+                    className={`group relative flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-md font-semibold text-sm transition-all duration-300 ease-out outline-none focus:outline-none focus:ring-0 ${
                       expensesView === 'all'
-                        ? 'text-blue-700 shadow-sm'
-                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50/50'
+                        ? 'text-gray-900'
+                        : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    {/* Icon with subtle animation */}
+                    {/* Icon */}
                     <Receipt className={`h-4 w-4 transition-all duration-300 ${
                       expensesView === 'all' 
-                        ? 'text-blue-600 scale-110' 
-                        : 'text-slate-500 group-hover:text-slate-700 group-hover:scale-105'
+                        ? 'text-gray-900' 
+                        : 'text-gray-500 group-hover:text-gray-700'
                     }`} />
                     
-                    {/* Text with smooth transitions */}
+                    {/* Text */}
                     <span className="relative z-10 transition-all duration-300">
                       {t('accounting.all_expenses')}
                     </span>
-                    
-                    {/* Subtle glow effect for active state */}
-                    {expensesView === 'all' && (
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-400/5 to-blue-600/5 animate-pulse" />
-                    )}
                   </button>
                   
                   <button
                     onClick={() => setExpensesView('daily')}
-                    className={`group relative flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-lg font-semibold text-sm transition-all duration-300 ease-out outline-none focus:outline-none focus:ring-0 ${
+                    className={`group relative flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-md font-semibold text-sm transition-all duration-300 ease-out outline-none focus:outline-none focus:ring-0 ${
                       expensesView === 'daily'
-                        ? 'text-blue-700 shadow-sm'
-                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50/50'
+                        ? 'text-gray-900'
+                        : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    {/* Icon with subtle animation */}
+                    {/* Icon */}
                     <Calendar className={`h-4 w-4 transition-all duration-300 ${
                       expensesView === 'daily' 
-                        ? 'text-blue-600 scale-110' 
-                        : 'text-slate-500 group-hover:text-slate-700 group-hover:scale-105'
+                        ? 'text-gray-900' 
+                        : 'text-gray-500 group-hover:text-gray-700'
                     }`} />
                     
-                    {/* Text with smooth transitions */}
+                    {/* Text */}
                     <span className="relative z-10 transition-all duration-300">
                       {t('accounting.daily_summary')}
                     </span>
+                  </button>
+                  
+                  <button
+                    onClick={() => setExpensesView('internal_revenue')}
+                    className={`group relative flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-md font-semibold text-sm transition-all duration-300 ease-out outline-none focus:outline-none focus:ring-0 ${
+                      expensesView === 'internal_revenue'
+                        ? 'text-gray-900'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {/* Icon */}
+                    <Calculator className={`h-4 w-4 transition-all duration-300 ${
+                      expensesView === 'internal_revenue' 
+                        ? 'text-gray-900' 
+                        : 'text-gray-500 group-hover:text-gray-700'
+                    }`} />
                     
-                    {/* Subtle glow effect for active state */}
-                    {expensesView === 'daily' && (
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-400/5 to-blue-600/5 animate-pulse" />
-                    )}
+                    {/* Text */}
+                    <span className="relative z-10 transition-all duration-300">
+                      Internal Revenue
+                    </span>
                   </button>
                 </div>
               </div>
@@ -3771,88 +4480,186 @@ if (authLoading) {
             {expensesView === 'all' && (
               <>
             {/* Modern Header Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-6 py-5 border-b border-gray-100">
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-6 py-5 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <Receipt className="h-5 w-5 text-blue-600" />
+                      <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200">
+                        <Receipt className="h-5 w-5 text-gray-700" />
                       </div>
-                      Company Expenses
+                      {t('accounting.company_expenses')}
                     </h2>
-                    <p className="text-sm text-gray-600 mt-1">Track and manage all company expenses</p>
+                    <p className="text-sm text-gray-600 mt-1">{t('accounting.track_manage_expenses')}</p>
                   </div>
                   <Button
                     onClick={handleOpenAddExpense}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+                    className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 border border-gray-900 transition-all"
                   >
                     <Plus className="h-4 w-4" />
-                    Add Expense
+                    {t('accounting.add_expense')}
                   </Button>
                 </div>
               </div>
               
               {/* Modern Filter Section */}
-              <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-6 border-b border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   {/* Search */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Search</label>
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <Search className="h-4 w-4 text-gray-500" />
+                      Search
+                    </label>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
                         type="text"
-                        placeholder="Search expenses..."
-                        className="pl-10 w-full border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                        placeholder={t('accounting.search_placeholder')}
+                        className="pl-10 w-full border-gray-200 focus:border-gray-500 focus:ring-gray-500"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                       />
+                      {searchTerm && (
+                        <button
+                          onClick={() => setSearchTerm('')}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          title={t('accounting.clear_search')}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   
                   {/* Status Filter */}
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Status</label>
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-gray-500" />
+                      {t('accounting.status')}
+                    </label>
                     <div className="relative">
-                      <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                       <select
                         value={expenseStatusFilter}
                         onChange={(e) => setExpenseStatusFilter(e.target.value as 'all' | 'paid' | 'pending' | 'cancelled')}
-                        className="w-full pl-10 pr-8 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white appearance-none"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 bg-white appearance-none text-sm"
                       >
-                        <option value="all">All Status</option>
-                        <option value="paid">Ödendi</option>
-                        <option value="pending">Beklemede</option>
-                        <option value="cancelled">İptal</option>
+                        <option value="all">{t('accounting.all_status')}</option>
+                        <option value="paid">{t('accounting.status_paid')}</option>
+                        <option value="pending">{t('accounting.status_pending')}</option>
+                        <option value="cancelled">{t('accounting.status_cancelled')}</option>
                       </select>
                     </div>
                   </div>
                   
-                  {/* Export Button */}
+                  {/* Category Filter */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-gray-500" />
+                      {t('accounting.category')}
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={expenseCategoryFilter}
+                        onChange={(e) => setExpenseCategoryFilter(e.target.value as 'all' | 'inflow' | 'outflow')}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 bg-white appearance-none text-sm"
+                      >
+                        <option value="all">{t('accounting.all_categories')}</option>
+                        <option value="inflow">{t('accounting.category_inflow')}</option>
+                        <option value="outflow">{t('accounting.category_outflow')}</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Active Filters Indicator */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Active Filters</label>
+                    <div className="flex items-center gap-2 min-h-[40px]">
+                      {(searchTerm || expenseStatusFilter !== 'all' || expenseCategoryFilter !== 'all') && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {searchTerm && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-md border border-gray-200">
+                              Search: "{searchTerm.substring(0, 20)}{searchTerm.length > 20 ? '...' : ''}"
+                              <button
+                                onClick={() => setSearchTerm('')}
+                                className="hover:text-gray-900"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          )}
+                          {expenseStatusFilter !== 'all' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-md border border-gray-200">
+                              {t('accounting.status')}: {expenseStatusFilter === 'paid' ? t('accounting.status_paid') : expenseStatusFilter === 'pending' ? t('accounting.status_pending') : t('accounting.status_cancelled')}
+                              <button
+                                onClick={() => setExpenseStatusFilter('all')}
+                                className="hover:text-gray-900"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          )}
+                          {expenseCategoryFilter !== 'all' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-md border border-gray-200">
+                              {t('accounting.category')}: {expenseCategoryFilter === 'inflow' ? t('accounting.category_inflow') : t('accounting.category_outflow')}
+                              <button
+                                onClick={() => setExpenseCategoryFilter('all')}
+                                className="hover:text-gray-900"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {!searchTerm && expenseStatusFilter === 'all' && expenseCategoryFilter === 'all' && (
+                        <span className="text-xs text-gray-400">No active filters</span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Actions */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700">Actions</label>
-                    <Button
-                      onClick={handleExportCSV}
-                      variant="outline"
-                      className="w-full border-gray-200 hover:border-gray-300 hover:bg-gray-50 flex items-center gap-2"
-                      disabled={filteredExpenses.length === 0}
-                    >
-                      <Download className="h-4 w-4" />
-                      Export CSV
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleExportCSV}
+                        variant="outline"
+                        className="flex-1 border-gray-200 hover:border-gray-300 hover:bg-gray-50 flex items-center justify-center gap-2"
+                        disabled={filteredExpenses.length === 0}
+                        size="sm"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export
+                      </Button>
+                      {(searchTerm || expenseStatusFilter !== 'all' || expenseCategoryFilter !== 'all') && (
+                        <Button
+                          onClick={() => {
+                            setSearchTerm('');
+                            setExpenseStatusFilter('all');
+                            setExpenseCategoryFilter('all');
+                          }}
+                          variant="outline"
+                          className="border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                          size="sm"
+                          title="Clear all filters"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Modern Table Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-6 py-4 border-b border-gray-100">
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <Activity className="h-5 w-5 text-blue-600" />
+                      <Activity className="h-5 w-5 text-gray-700" />
                       Expense Records
                     </h3>
                     <p className="text-sm text-gray-600 mt-1">
@@ -3868,8 +4675,9 @@ if (authLoading) {
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.description')}</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.detail')}</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">TRY</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">USD</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.category')}</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.type')}</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.mount')}</th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.status')}</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.cost_period')}</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('accounting.payment_date')}</th>
@@ -3887,30 +4695,46 @@ if (authLoading) {
                             </span>
                           </td>
                           <td className="py-5 px-6">
-                            <p className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{expense.description}</p>
+                            <p className="font-semibold text-gray-900 group-hover:text-gray-700 transition-colors">{expense.description}</p>
                           </td>
                           <td className="py-5 px-6">
                             <p className="text-sm text-gray-600 max-w-xs truncate" title={expense.detail}>
                               {expense.detail}
                             </p>
                           </td>
-                          <td className="py-5 px-6 text-right">
-                            <p className="font-bold text-gray-900 font-mono">
-                              {formatCurrencyUtil(expense.amount_try, '₺')}
-                            </p>
+                          <td className="py-5 px-6">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                              expense.category === 'inflow' 
+                                ? 'bg-gray-100 text-gray-700 border border-gray-300' :
+                                'bg-gray-200 text-gray-800 border border-gray-300'
+                            }`}>
+                              {expense.category === 'inflow' ? t('accounting.category_inflow') : t('accounting.category_outflow')}
+                            </span>
+                          </td>
+                          <td className="py-5 px-6">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-50 text-gray-700 border border-gray-200">
+                              {expense.type === 'payment' ? t('accounting.type_payment') : t('accounting.type_transfer')}
+                            </span>
                           </td>
                           <td className="py-5 px-6 text-right">
-                            <p className="font-semibold text-gray-700 font-mono">
-                              ${expense.amount_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <p className="font-bold text-gray-900 font-mono">
+                              {expense.mount_currency === 'USD' 
+                                ? `$${expense.amount_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : expense.mount_currency === 'USDT'
+                                ? `₮${expense.amount_usdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : formatCurrencyUtil(expense.amount_try, '₺')}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {expense.mount_currency || 'TRY'}
                             </p>
                           </td>
                           <td className="py-5 px-6 text-center">
                             <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
                               expense.status === 'paid' 
-                                ? 'bg-green-100 text-green-700 border border-green-200' :
+                                ? 'bg-gray-100 text-gray-700 border border-gray-300' :
                               expense.status === 'pending'
-                                ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-                                'bg-red-100 text-red-700 border border-red-200'
+                                ? 'bg-gray-50 text-gray-600 border border-gray-200' :
+                                'bg-gray-200 text-gray-800 border border-gray-300'
                             }`}>
                               {expense.status === 'paid' && <CheckCircle className="h-3.5 w-3.5" />}
                               {expense.status === 'pending' && <Clock className="h-3.5 w-3.5" />}
@@ -3940,7 +4764,7 @@ if (authLoading) {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleOpenViewExpense(expense)}
-                                className="h-9 w-9 p-0 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-all"
+                                className="h-9 w-9 p-0 hover:bg-gray-100 hover:text-gray-700 rounded-lg transition-all"
                                 title="View expense details (read-only)"
                                 aria-label="View expense"
                               >
@@ -3950,7 +4774,7 @@ if (authLoading) {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleOpenEditExpense(expense)}
-                                className="h-9 w-9 p-0 hover:bg-blue-100 hover:text-blue-700 rounded-lg transition-all"
+                                className="h-9 w-9 p-0 hover:bg-gray-100 hover:text-gray-700 rounded-lg transition-all"
                                 title="Edit this expense"
                                 aria-label="Edit expense"
                               >
@@ -3960,7 +4784,7 @@ if (authLoading) {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleDeleteExpense(expense.id)}
-                                className="h-9 w-9 p-0 hover:bg-red-100 hover:text-red-700 rounded-lg transition-all"
+                                className="h-9 w-9 p-0 hover:bg-gray-200 hover:text-gray-900 rounded-lg transition-all"
                                 title="Delete this expense (cannot be undone)"
                                 aria-label="Delete expense"
                               >
@@ -3975,30 +4799,31 @@ if (authLoading) {
                 
                 {filteredExpenses.length === 0 && (
                   <div className="text-center py-16">
-                    <div className="w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <ShoppingCart className="h-10 w-10 text-blue-500" />
+                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <ShoppingCart className="h-10 w-10 text-gray-600" />
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">No expenses found</h3>
                     <p className="text-sm text-gray-600 max-w-md mx-auto mb-6">
-                      {searchTerm || expenseStatusFilter !== 'all' 
+                      {searchTerm || expenseStatusFilter !== 'all' || expenseCategoryFilter !== 'all'
                         ? 'No expenses match your current search or filter criteria. Try adjusting your filters to see more results.' 
                         : 'You haven\'t added any expenses yet. Start tracking your company expenses by adding your first entry.'}
                     </p>
-                    {!searchTerm && expenseStatusFilter === 'all' && (
+                    {!searchTerm && expenseStatusFilter === 'all' && expenseCategoryFilter === 'all' && (
                       <Button
                         onClick={handleOpenAddExpense}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 mx-auto shadow-sm hover:shadow-md transition-all"
+                        className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 mx-auto border border-gray-900 transition-all"
                       >
                         <Plus className="h-4 w-4" />
                         Add Your First Expense
                       </Button>
                     )}
-                    {(searchTerm || expenseStatusFilter !== 'all') && (
+                    {(searchTerm || expenseStatusFilter !== 'all' || expenseCategoryFilter !== 'all') && (
                       <Button
                         variant="outline"
                         onClick={() => {
                           setSearchTerm('');
                           setExpenseStatusFilter('all');
+                          setExpenseCategoryFilter('all');
                         }}
                         className="border-gray-200 hover:border-gray-300 hover:bg-gray-50 px-4 py-2 rounded-lg flex items-center gap-2 mx-auto"
                       >
@@ -4077,11 +4902,11 @@ if (authLoading) {
             {expenses.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Turkish Lira Card */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 group">
+                <div className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-all duration-200 group">
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl flex items-center justify-center group-hover:from-slate-100 group-hover:to-slate-200 transition-all duration-200">
-                        <Banknote className="h-7 w-7 text-slate-700 group-hover:text-slate-800 transition-colors" />
+                      <div className="w-14 h-14 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center group-hover:bg-gray-100 transition-all duration-200">
+                        <Banknote className="h-7 w-7 text-gray-700 group-hover:text-gray-900 transition-colors" />
                       </div>
                       <div className="text-right">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total TRY</p>
@@ -4097,11 +4922,11 @@ if (authLoading) {
                 </div>
 
                 {/* US Dollar Card */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 group">
+                <div className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-all duration-200 group">
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl flex items-center justify-center group-hover:from-slate-100 group-hover:to-slate-200 transition-all duration-200">
-                        <CreditCard className="h-7 w-7 text-slate-700 group-hover:text-slate-800 transition-colors" />
+                      <div className="w-14 h-14 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center group-hover:bg-gray-100 transition-all duration-200">
+                        <CreditCard className="h-7 w-7 text-gray-700 group-hover:text-gray-900 transition-colors" />
                       </div>
                       <div className="text-right">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total USD</p>
@@ -4117,11 +4942,11 @@ if (authLoading) {
                 </div>
 
                 {/* Expense Records Card */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 group">
+                <div className="bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-all duration-200 group">
                   <div className="p-6">
                     <div className="flex items-center justify-between mb-6">
-                      <div className="w-14 h-14 bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-xl flex items-center justify-center group-hover:from-slate-100 group-hover:to-slate-200 transition-all duration-200">
-                        <Receipt className="h-7 w-7 text-slate-700 group-hover:text-slate-800 transition-colors" />
+                      <div className="w-14 h-14 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center group-hover:bg-gray-100 transition-all duration-200">
+                        <Receipt className="h-7 w-7 text-gray-700 group-hover:text-gray-900 transition-colors" />
                       </div>
                       <div className="text-right">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Entries</p>
@@ -4137,6 +4962,7 @@ if (authLoading) {
                 </div>
               </div>
             )}
+
               </>
             )}
 
@@ -4144,13 +4970,13 @@ if (authLoading) {
             {expensesView === 'daily' && (
               <div className="space-y-6">
                 {/* Header Card */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-6 py-5 border-b border-gray-100">
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-6 py-5 border-b border-gray-200">
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <Calendar className="h-5 w-5 text-blue-600" />
+                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200">
+                            <Calendar className="h-5 w-5 text-gray-700" />
                           </div>
                           {t('accounting.daily_expenses')}
                         </h2>
@@ -4377,7 +5203,7 @@ if (authLoading) {
                                                 USD
                                               </th>
                                               <th className="px-6 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-[6%]">
-                                                Status
+                                                {t('accounting.status')}
                                               </th>
                                             </tr>
                                           </thead>
@@ -4482,8 +5308,8 @@ if (authLoading) {
                       </table>
                     ) : (
                       <div className="text-center py-16">
-                        <div className="w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                          <Calendar className="h-10 w-10 text-blue-500" />
+                        <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                          <Calendar className="h-10 w-10 text-gray-600" />
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('accounting.no_daily_data')}</h3>
                         <p className="text-sm text-gray-600 max-w-md mx-auto mb-6">
@@ -4491,7 +5317,7 @@ if (authLoading) {
                         </p>
                         <Button
                           onClick={() => setExpensesView('all')}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 mx-auto shadow-sm hover:shadow-md transition-all"
+                          className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 mx-auto border border-gray-900 transition-all"
                         >
                           <Receipt className="h-4 w-4" />
                           {t('accounting.all_expenses')}
@@ -4500,6 +5326,238 @@ if (authLoading) {
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+            {/* Internal Revenue View */}
+            {expensesView === 'internal_revenue' && (
+              <div className="space-y-6">
+                {/* Currency Summary */}
+                {currencySummary.length > 0 && (
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                      {/* Month Selector Row */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                          <label className="text-sm font-medium text-gray-700">Month:</label>
+                          <select
+                            value={selectedMonthPeriod}
+                            onChange={(e) => loadMonthData(e.target.value)}
+                            disabled={isLoadingMonth}
+                            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-gray-500 bg-white text-sm"
+                          >
+                            <option value={new Date().toISOString().slice(0, 7)}>
+                              Current Month ({new Date().toISOString().slice(0, 7)})
+                            </option>
+                            {savedMonths.map(month => (
+                              <option key={month.month_period} value={month.month_period}>
+                                {month.month_period} {month.is_locked ? '🔒' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          
+                          {isMonthLocked && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                              <Lock className="h-3 w-3 mr-1" />
+                              Locked
+                            </span>
+                          )}
+                          
+                          {isLoadingMonth && (
+                            <span className="text-sm text-gray-500">Loading...</span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={handleSaveCurrencySummary}
+                            disabled={isMonthLocked || isSavingMonth || isLoadingMonth}
+                            className="bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50"
+                            size="sm"
+                          >
+                            <Save className="h-4 w-4 mr-2" />
+                            {isSavingMonth ? 'Saving...' : 'Save Month Data'}
+                          </Button>
+                          
+                          {!isMonthLocked && selectedMonthPeriod !== new Date().toISOString().slice(0, 7) && (
+                            <Button
+                              onClick={handleLockMonth}
+                              variant="outline"
+                              size="sm"
+                              className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                            >
+                              <Lock className="h-4 w-4 mr-2" />
+                              Lock Month
+                            </Button>
+                          )}
+                          
+                          {isMonthLocked && (
+                            <Button
+                              onClick={handleUnlockMonth}
+                              variant="outline"
+                              size="sm"
+                              className="border-green-500 text-green-600 hover:bg-green-50"
+                            >
+                              <Unlock className="h-4 w-4 mr-2" />
+                              Unlock
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Title Row */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                            <Calculator className="h-5 w-5 text-gray-700" />
+                            Currency Summary
+                          </h3>
+                          <p className="text-sm text-gray-600 mt-1">
+                            Summary grouped by currency with inflow/outflow calculations. 
+                            {isMonthLocked ? ' (Read-only - month is locked)' : ' Edit DEVİR and KUR, then click Save.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Currency</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">DEVİR<br/>(Carryover)</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">GİREN<br/>(Inflow)</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">ÇIKAN<br/>(Outflow)</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">NET</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">USD ÇEVRİM<br/>(USD Conversion)</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">KUR<br/>(Rate)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {currencySummary.map((item, index) => {
+                            const exchangeRate = (currentRate && currentRate > 0) ? currentRate : 42.57;
+                            return (
+                            <tr key={item.currency} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-6 py-4">
+                                <span className="font-semibold text-gray-900">{item.currency}</span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {item.currency === 'TRY' ? (
+                                    <span className="text-gray-500 text-sm">₺</span>
+                                  ) : (
+                                    <span className="text-gray-500 text-sm">$</span>
+                                  )}
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={tempCarryoverValues[item.currency as 'TRY' | 'USD' | 'USDT'] || 0}
+                                    onChange={(e) => {
+                                      const value = parseFloat(e.target.value) || 0;
+                                      setTempCarryoverValues({
+                                        ...tempCarryoverValues,
+                                        [item.currency]: value
+                                      });
+                                      // NO auto-save! User must click "Save Month Data" button
+                                    }}
+                                    disabled={isMonthLocked}
+                                    className={`w-32 h-9 text-sm font-mono text-right border-gray-300 focus:border-gray-500 focus:ring-gray-500 ${
+                                      isMonthLocked ? 'bg-gray-100 cursor-not-allowed' : ''
+                                    }`}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <span className="text-sm font-mono text-gray-700">
+                                  {item.currency === 'TRY' 
+                                    ? formatCurrencyUtil(item.inflow, '₺')
+                                    : item.currency === 'USD'
+                                    ? `$${item.inflow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : `$${item.inflow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <span className="text-sm font-mono text-gray-700">
+                                  {item.currency === 'TRY' 
+                                    ? formatCurrencyUtil(item.outflow, '₺')
+                                    : item.currency === 'USD'
+                                    ? `$${item.outflow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : `$${item.outflow.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <span className={`text-sm font-bold font-mono ${
+                                  item.net >= 0 ? 'text-gray-900' : 'text-red-600'
+                                }`}>
+                                  {item.currency === 'TRY' 
+                                    ? formatCurrencyUtil(item.net, '₺')
+                                    : item.currency === 'USD'
+                                    ? `$${item.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : `$${item.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <span className="text-sm font-bold font-mono text-gray-900">
+                                  ${item.usdEquivalent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                {item.currency === 'TRY' ? (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      value={tempExchangeRates.TRY || ''}
+                                      onChange={(e) => {
+                                        setTempExchangeRates({
+                                          ...tempExchangeRates,
+                                          TRY: e.target.value
+                                        });
+                                      }}
+                                      disabled={isMonthLocked}
+                                      className={`w-24 h-9 text-sm font-mono text-right border-gray-300 focus:border-gray-500 focus:ring-gray-500 ${
+                                        isMonthLocked ? 'bg-gray-100 cursor-not-allowed' : ''
+                                      }`}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="text-sm font-mono text-gray-700">-</span>
+                                )}
+                              </td>
+                            </tr>
+                            );
+                          })}
+                          {/* KASA TOPLAM Row */}
+                          <tr className="bg-gray-50 font-semibold">
+                            <td className="px-6 py-4">
+                              <span className="font-bold text-gray-900">KASA TOPLAM</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-mono text-gray-700">-</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-mono text-gray-700">-</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-mono text-gray-700">-</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-mono text-gray-700">-</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-bold font-mono text-gray-900">
+                                ${currencySummary.reduce((sum, item) => sum + item.usdEquivalent, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-mono text-gray-700">-</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -4529,7 +5587,7 @@ if (authLoading) {
               <div className="relative bg-gradient-to-r from-slate-50/90 via-white/80 to-slate-50/90 backdrop-blur-sm border border-slate-200/60 rounded-xl shadow-lg shadow-slate-200/20 p-1.5">
                 {/* Animated background indicator */}
                 <div 
-                  className={`absolute top-1.5 bottom-1.5 w-[calc(50%-0.375rem)] bg-gradient-to-r from-green-500/10 via-green-600/15 to-green-500/10 backdrop-blur-sm border border-green-200/40 rounded-lg shadow-sm transition-all duration-300 ease-out ${
+                  className={`absolute top-1.5 bottom-1.5 w-[calc(50%-0.375rem)] bg-gray-100/50 backdrop-blur-sm border border-gray-200/40 rounded-lg shadow-sm transition-all duration-300 ease-out ${
                     netView === 'calculator' 
                       ? 'left-1.5' 
                       : 'right-1.5'
@@ -4560,7 +5618,7 @@ if (authLoading) {
                     
                     {/* Subtle glow effect for active state */}
                     {netView === 'calculator' && (
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-400/5 to-green-600/5 animate-pulse" />
+                      <div className="absolute inset-0 rounded-lg bg-gray-100/20 animate-pulse" />
                     )}
                   </button>
                   
@@ -4586,7 +5644,7 @@ if (authLoading) {
                     
                     {/* Subtle glow effect for active state */}
                     {netView === 'daily' && (
-                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-green-400/5 to-green-600/5 animate-pulse" />
+                      <div className="absolute inset-0 rounded-lg bg-gray-100/20 animate-pulse" />
                     )}
                   </button>
                 </div>
@@ -4642,14 +5700,14 @@ if (authLoading) {
           }}
           tabIndex={-1}
         >
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-            <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-6 py-5 border-b border-gray-100">
+          <div className="bg-white rounded-lg border border-gray-200 max-w-2xl w-full max-h-[90vh] overflow-hidden">
+            <div className="bg-gray-50 px-6 py-5 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Receipt className="h-5 w-5 text-blue-600" />
+                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200">
+                    <Receipt className="h-5 w-5 text-gray-700" />
                   </div>
-                  {isViewMode ? 'View Expense' : editingExpense ? 'Edit Expense' : 'Add New Expense'}
+                  {isViewMode ? t('accounting.view_expense') : editingExpense ? t('accounting.edit_expense') : t('accounting.add_new_expense')}
                 </h2>
                 <button
                   onClick={handleCloseExpenseModal}
@@ -4666,8 +5724,8 @@ if (authLoading) {
               {/* Basic Information Section */}
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                  <div className="w-1 h-4 bg-blue-600 rounded-full"></div>
-                  Basic Information
+                  <div className="w-1 h-4 bg-gray-700 rounded-full"></div>
+                  {t('accounting.basic_information')}
                 </h3>
                 <div className="pl-4 space-y-4">
                   {/* Description */}
@@ -4699,113 +5757,152 @@ if (authLoading) {
                       disabled={isViewMode}
                     />
                   </div>
+
+                  {/* Category */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      {t('accounting.category')} {!isViewMode && <span className="text-red-500">*</span>}
+                    </label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) => setFormData({...formData, category: e.target.value as 'inflow' | 'outflow'})}
+                      className="w-full h-11 px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-base"
+                      disabled={isViewMode}
+                    >
+                      <option value="inflow">{t('accounting.category_inflow')}</option>
+                      <option value="outflow">{t('accounting.category_outflow')}</option>
+                    </select>
+                  </div>
+
+                  {/* Type */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      {t('accounting.type')} {!isViewMode && <span className="text-red-500">*</span>}
+                    </label>
+                    <select
+                      value={formData.type}
+                      onChange={(e) => setFormData({...formData, type: e.target.value as 'payment' | 'transfer'})}
+                      className="w-full h-11 px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-base"
+                      disabled={isViewMode}
+                    >
+                      <option value="payment">{t('accounting.type_payment')}</option>
+                      <option value="transfer">{t('accounting.type_transfer')}</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
               {/* Financial Details Section */}
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                  <div className="w-1 h-4 bg-blue-600 rounded-full"></div>
-                  Financial Details
+                  <div className="w-1 h-4 bg-gray-700 rounded-full"></div>
+                  {t('accounting.financial_details')}
                 </h3>
                 <div className="pl-4 space-y-4">
-                  {/* Amounts - TRY and USD */}
-                  {/* Currency Conversion Section */}
-                  {!isViewMode && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-sm font-semibold text-gray-700">
-                          {t('accounting.auto_convert')}
-                        </label>
-                        <div className="flex items-center gap-3">
-                          {/* Base Currency Selection */}
-                          <div className="flex items-center gap-2 text-sm">
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                              <input
-                                type="radio"
-                                value="TRY"
-                                checked={baseCurrency === 'TRY'}
-                                onChange={(e) => setBaseCurrency(e.target.value as 'TRY' | 'USD')}
-                                className="w-4 h-4"
-                              />
-                              <span className="font-medium">₺ TRY → $ USD</span>
-                            </label>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                              <input
-                                type="radio"
-                                value="USD"
-                                checked={baseCurrency === 'USD'}
-                                onChange={(e) => setBaseCurrency(e.target.value as 'TRY' | 'USD')}
-                                className="w-4 h-4"
-                              />
-                              <span className="font-medium">$ USD → ₺ TRY</span>
-                            </label>
-                          </div>
-                          {/* Convert Button */}
-                          <Button
-                            type="button"
-                            onClick={handleAutoConvert}
-                            disabled={fetchingRate || (!formData.amount_try && !formData.amount_usd)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 h-auto text-sm"
-                            size="sm"
-                          >
-                            {fetchingRate ? (
-                              <>
-                                <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                                {t('accounting.fetching')}
-                              </>
-                            ) : (
-                              <>
-                                <Calculator className="h-3.5 w-3.5 mr-1.5" />
-                                {t('accounting.convert')}
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                      {currentRate && (
-                        <div className="text-xs text-gray-600 flex items-center gap-1.5">
-                          <Info className="h-3.5 w-3.5" />
-                          <span>{t('accounting.current_rate')}: 1 USD = {currentRate.toFixed(4)} TRY</span>
+                  {/* Amount - Radio buttons + single input */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        {t('accounting.mount')} {!isViewMode && <span className="text-red-500">*</span>}
+                      </label>
+                      
+                      {/* Currency Selection - Radio Buttons */}
+                      {!isViewMode && (
+                        <div className="flex items-center gap-4 mb-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              value="TRY"
+                              checked={formData.mount_currency === 'TRY'}
+                              onChange={(e) => setFormData({...formData, mount_currency: e.target.value as 'TRY' | 'USD' | 'USDT'})}
+                              className="w-4 h-4 text-gray-700"
+                            />
+                            <span className="font-medium text-sm">₺ TRY</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              value="USD"
+                              checked={formData.mount_currency === 'USD'}
+                              onChange={(e) => setFormData({...formData, mount_currency: e.target.value as 'TRY' | 'USD' | 'USDT'})}
+                              className="w-4 h-4 text-gray-700"
+                            />
+                            <span className="font-medium text-sm">$ USD</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              value="USDT"
+                              checked={formData.mount_currency === 'USDT'}
+                              onChange={(e) => setFormData({...formData, mount_currency: e.target.value as 'TRY' | 'USD' | 'USDT'})}
+                              className="w-4 h-4 text-gray-700"
+                            />
+                            <span className="font-medium text-sm">₮ USDT</span>
+                          </label>
                         </div>
                       )}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        {t('accounting.try_amount')} {!isViewMode && <span className="text-red-500">*</span>}
-                      </label>
+                      
+                      {/* Single Amount Input */}
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">₺</span>
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">
+                          {formData.mount_currency === 'TRY' ? '₺' : formData.mount_currency === 'USD' ? '$' : '₮'}
+                        </span>
                         <Input
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          value={formData.amount_try}
-                          onChange={(e) => setFormData({...formData, amount_try: e.target.value})}
+                          value={formData.amount}
+                          onChange={(e) => setFormData({...formData, amount: e.target.value})}
                           className="w-full h-11 pl-8 text-base font-mono"
                           disabled={isViewMode}
                         />
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        {t('accounting.usd_amount')} {!isViewMode && <span className="text-red-500">*</span>}
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">$</span>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={formData.amount_usd}
-                          onChange={(e) => setFormData({...formData, amount_usd: e.target.value})}
-                          className="w-full h-11 pl-8 text-base font-mono"
-                          disabled={isViewMode}
-                        />
-                      </div>
+                      
+                      {/* Calculated Amounts (Read-only) */}
+                      {!isViewMode && formData.amount && parseFloat(formData.amount) > 0 && (
+                        <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md space-y-2">
+                          <div className="text-xs font-semibold text-gray-600 mb-2">{t('accounting.calculated_amounts')}:</div>
+                          <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500">₺</span>
+                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_try.toFixed(2)} TRY</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500">$</span>
+                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_usd.toFixed(2)} USD</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500">₮</span>
+                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_usdt.toFixed(2)} USDT</span>
+                            </div>
+                          </div>
+                          {currentRate && formData.mount_currency !== 'USDT' && (
+                            <div className="text-xs text-gray-500 mt-2">
+                              {t('accounting.rate')}: 1 USD = {currentRate.toFixed(4)} TRY
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* View Mode - Show all amounts */}
+                      {isViewMode && (
+                        <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md space-y-2">
+                          <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500">₺</span>
+                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_try.toFixed(2)} TRY</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500">$</span>
+                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_usd.toFixed(2)} USD</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-500">₮</span>
+                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_usdt.toFixed(2)} USDT</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -4817,7 +5914,7 @@ if (authLoading) {
                     <select
                       value={formData.status}
                       onChange={(e) => setFormData({...formData, status: e.target.value as 'paid' | 'pending' | 'cancelled'})}
-                      className="w-full h-11 px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed text-base"
+                      className="w-full h-11 px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-base"
                       disabled={isViewMode}
                     >
                       <option value="pending">{t('accounting.status_pending')}</option>
@@ -4846,8 +5943,8 @@ if (authLoading) {
               {/* Period Information Section */}
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                  <div className="w-1 h-4 bg-blue-600 rounded-full"></div>
-                  Period Information
+                  <div className="w-1 h-4 bg-gray-700 rounded-full"></div>
+                  {t('accounting.period_information')}
                 </h3>
                 <div className="pl-4 space-y-4">
                   {/* Cost Period */}
@@ -4898,8 +5995,28 @@ if (authLoading) {
             </div>
             </div>
 
-            <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3">
-              {!isViewMode && (
+            <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
+              {showAddAnother ? (
+                <>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-700 font-medium">{t('accounting.expense_added_success')}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleOpenAddExpense}
+                    className="px-4 py-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    {t('accounting.add_another')}
+                  </Button>
+                  <Button
+                    onClick={handleCloseExpenseModal}
+                    className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white border border-gray-900"
+                  >
+                    {t('accounting.close')}
+                  </Button>
+                </>
+              ) : !isViewMode ? (
                 <>
                   <Button
                     variant="outline"
@@ -4907,18 +6024,18 @@ if (authLoading) {
                     className="px-4 py-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                   >
                     <X className="h-4 w-4 mr-2" />
-                    Cancel
+                    {t('common.cancel')}
                   </Button>
                   <Button
                     onClick={handleSaveExpense}
-                    disabled={!formData.description || !formData.amount_try || !formData.amount_usd}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!formData.description || !formData.category || !formData.type || !formData.amount || parseFloat(formData.amount) <= 0}
+                    className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed border border-gray-900"
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    {editingExpense ? 'Update Expense' : 'Add Expense'}
+                    {editingExpense ? t('accounting.update_expense') : t('accounting.add_expense')}
                   </Button>
                 </>
-              )}
+              ) : null}
               {isViewMode && (
                 <Button
                   variant="outline"
@@ -4926,7 +6043,7 @@ if (authLoading) {
                   className="px-4 py-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                 >
                   <X className="h-4 w-4 mr-2" />
-                  Close
+                  {t('accounting.close')}
                 </Button>
               )}
             </div>

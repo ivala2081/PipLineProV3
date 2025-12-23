@@ -66,6 +66,7 @@ import {
   ComposedChart,
 } from 'recharts';
 import { useLanguage } from '../contexts/LanguageContext';
+import { SectionHeader } from '../components/ui/SectionHeader';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/apiClient';
 import { formatCurrency as formatCurrencyUtil, formatCurrencyPositive } from '../utils/currencyUtils';
@@ -159,6 +160,23 @@ interface DailySummary {
   total_withdrawals_usd?: number;
   transaction_count: number;
   unique_clients: number;
+  payment_method_totals?: {
+    BANK?: {
+      amount_tl: number;
+      amount_usd: number;
+      count: number;
+    };
+    CC?: {
+      amount_tl: number;
+      amount_usd: number;
+      count: number;
+    };
+    TETHER?: {
+      amount_tl: number;
+      amount_usd: number;
+      count: number;
+    };
+  };
   psp_summary: Array<{
     name: string;
     gross_tl?: number;  // Gross amount (before commission)
@@ -362,6 +380,48 @@ const [dropdownOptions, setDropdownOptions] = useState({
   const [exporting, setExporting] = useState(false);
   const location = useLocation();
   const [activeTab, handleTabChangeBase] = useTabPersistence<'overview' | 'transactions' | 'analytics' | 'clients'>('overview');
+  
+  // Handle URL parameters on mount and when location changes
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const clientNameParam = searchParams.get('client') || searchParams.get('client_name');
+    const showDetails = searchParams.get('show_details') === 'true';
+    
+    if (clientNameParam) {
+      const decodedClientName = decodeURIComponent(clientNameParam);
+      
+      // Set the client name filter
+      setFilters(prev => ({
+        ...prev,
+        client_name: decodedClientName
+      }));
+      
+      // If show_details is true, find and show the client details modal
+      // Wait for clients to load if they haven't loaded yet
+      if (showDetails) {
+        if (clients.length > 0) {
+          const foundClient = clients.find(
+            c => c.client_name.toLowerCase() === decodedClientName.toLowerCase()
+          );
+          if (foundClient) {
+            setSelectedClient(foundClient);
+            setShowViewModal(true);
+            // Remove show_details from URL to prevent reopening on re-render
+            const newParams = new URLSearchParams(location.search);
+            newParams.delete('show_details');
+            navigate(`/clients?${newParams.toString()}`, { replace: true });
+          }
+        }
+        // If clients haven't loaded yet, the effect will run again when clients load
+      }
+    } else {
+      // Clear the filter if no client parameter in URL
+      setFilters(prev => ({
+        ...prev,
+        client_name: ''
+      }));
+    }
+  }, [location.search, clients, navigate]);
   const [isChangingPagination, setIsChangingPagination] = useState(false);
   const [paginationLoading, setPaginationLoading] = useState(false);
   const [loadingTimeout, setLoadingTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -1198,9 +1258,10 @@ const handleFilterChange = (key: string, value: string) => {
         date: dateKey,
         transactions: transactions.sort(
           (a, b) => {
-            const dateA = a.date ? new Date(a.date).getTime() : 0;
-            const dateB = b.date ? new Date(b.date).getTime() : 0;
-            return dateB - dateA;
+            // Sort by created_at descending (newest first) within the same date
+            const createdA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const createdB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return createdB - createdA;
           }
         ),
         grossBalance: dailyGrossBalances[dateKey] || null, // Add gross balance (TL and USD) from state
@@ -2507,7 +2568,22 @@ return breakdown;
 
   // Calculate daily deposit and withdrawal metrics for the selected date
   const calculateDailyDepositWithdrawMetrics = (date: string) => {
-    // First, try to calculate from local transactions (more reliable)
+    // Prioritize backend data if available (more accurate)
+    if (dailySummaryData && dailySummaryData.date === date) {
+      const backendDeposits = dailySummaryData.total_deposits_tl || 0;
+      const backendWithdrawals = dailySummaryData.total_withdrawals_tl || 0;
+      const backendCount = dailySummaryData.transaction_count || 0;
+      const backendClients = dailySummaryData.unique_clients || 0;
+
+      return {
+        totalDeposits: backendDeposits,
+        totalWithdrawals: backendWithdrawals,
+        transactionCount: backendCount,
+        uniqueClients: backendClients
+      };
+    }
+    
+    // Fallback to local transactions calculation if backend data not available
     if (Array.isArray(transactions)) {
       const dateTransactions = transactions.filter(t => {
         const transactionDate = t.date ? t.date.split('T')[0] : null;
@@ -2536,26 +2612,10 @@ return breakdown;
       const transactionCount = dateTransactions.length;
       const uniqueClients = new Set(dateTransactions.map(t => t.client_name).filter(name => name)).size;
       
-      // If we have data from local calculation, use it (more reliable)
+      // If we have data from local calculation, use it
       if (transactionCount > 0) {
-
         return { totalDeposits, totalWithdrawals, transactionCount, uniqueClients };
       }
-    }
-    
-    // Fallback to backend data if local calculation has no data
-    if (dailySummaryData && dailySummaryData.date === date) {
-      const backendDeposits = dailySummaryData.total_deposits_tl || 0;
-      const backendWithdrawals = dailySummaryData.total_withdrawals_tl || 0;
-      const backendCount = dailySummaryData.transaction_count || 0;
-      const backendClients = dailySummaryData.unique_clients || 0;
-
-      return {
-        totalDeposits: backendDeposits,
-        totalWithdrawals: backendWithdrawals,
-        transactionCount: backendCount,
-        uniqueClients: backendClients
-      };
     }
     
     // Final fallback
@@ -2709,10 +2769,27 @@ return breakdown;
       setDailySummaryLoading(true);
       setSelectedDate(date);
       
-      const response = await api.get(`/api/summary/${date}`);
+      // Note: This endpoint is on transactions_bp which has no /api/v1 prefix, so use direct fetch
+      const response = await fetch(`/api/summary/${date}`, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       
       if (response.ok) {
-        const data = await api.parseResponse(response) as any;
+        const data = await response.json();
+        
+        // Debug: Log full API response to verify data
+        console.log('📊 Daily Summary API Response:', {
+          date: data.date,
+          hasPaymentMethodTotals: !!data.payment_method_totals,
+          paymentMethodTotals: data.payment_method_totals,
+          total_commission_tl: data.total_commission_tl,
+          total_commission_usd: data.total_commission_usd,
+          transaction_count: data.transaction_count,
+          fullData: data // Full response for debugging - copy this to share
+        });
 
 // Normalize usd_rate - backend may return Decimal, convert to number
         const normalizedData: DailySummary = {
@@ -2727,6 +2804,24 @@ return breakdown;
           total_deposits_usd: data.total_deposits_usd !== undefined ? Number(data.total_deposits_usd) : 0,
           total_withdrawals_tl: data.total_withdrawals_tl !== undefined ? Number(data.total_withdrawals_tl) : 0,
           total_withdrawals_usd: data.total_withdrawals_usd !== undefined ? Number(data.total_withdrawals_usd) : 0,
+          // Preserve payment_method_totals if present
+          payment_method_totals: data.payment_method_totals ? {
+            BANK: data.payment_method_totals.BANK ? {
+              amount_tl: Number(data.payment_method_totals.BANK.amount_tl || 0),
+              amount_usd: Number(data.payment_method_totals.BANK.amount_usd || 0),
+              count: Number(data.payment_method_totals.BANK.count || 0)
+            } : undefined,
+            CC: data.payment_method_totals.CC ? {
+              amount_tl: Number(data.payment_method_totals.CC.amount_tl || 0),
+              amount_usd: Number(data.payment_method_totals.CC.amount_usd || 0),
+              count: Number(data.payment_method_totals.CC.count || 0)
+            } : undefined,
+            TETHER: data.payment_method_totals.TETHER ? {
+              amount_tl: Number(data.payment_method_totals.TETHER.amount_tl || 0),
+              amount_usd: Number(data.payment_method_totals.TETHER.amount_usd || 0),
+              count: Number(data.payment_method_totals.TETHER.count || 0)
+            } : undefined
+          } : undefined,
         };
 
         setDailySummaryData(normalizedData);
@@ -2735,7 +2830,7 @@ return breakdown;
         // Handle non-200 responses
         console.warn('⚠️ Daily Summary API returned non-OK status:', response.status);
         try {
-          const errorData = await api.parseResponse(response);
+          const errorData = await response.json();
           console.error('❌ Error data:', errorData);
         } catch (parseError) {
           console.error('❌ Failed to parse error response:', parseError);
@@ -3037,115 +3132,112 @@ return breakdown;
 
     return groupedTransactions.map((dateGroup, groupIndex) => (
       <div key={dateGroup.dateKey} className='border-b border-gray-100 last:border-b-0'>
-        {/* Date Header - Professional & Minimal */}
-        <div className='px-6 py-3 bg-slate-100 border-b border-slate-300'>
+        {/* Date Header - Minimal & Professional */}
+        <div className='px-6 py-4 bg-white border-b border-gray-200'>
           <div className='flex items-center justify-between'>
-            <div className='flex items-center gap-3'>
-              {/* Simplified Icon */}
-              <div className='w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center'>
-                <Calendar className='h-4 w-4 text-white' />
+            {/* Left: Date & Stats */}
+            <div className='flex items-center gap-6'>
+              {/* Date */}
+              <div className='flex items-center gap-2'>
+                <h4 className='text-base font-semibold text-gray-900'>
+                  {formatDateHeader(dateGroup.date)}
+                </h4>
+                <span className='text-xs text-gray-500 font-normal'>
+                  {new Date(dateGroup.date).toLocaleDateString('en-US', { weekday: 'short' })}
+                </span>
               </div>
               
-              <div className='space-y-0.5'>
-                {/* Date Title - Reduced Size */}
-                <div className='flex items-center gap-2'>
-                  <h4 className='text-lg font-semibold text-slate-900 tracking-tight'>
-                    {formatDateHeader(dateGroup.date)}
-                  </h4>
-                  <span className='inline-flex items-center px-2 py-0.5 text-xs font-medium text-slate-700 bg-slate-200 rounded'>
-                    {new Date(dateGroup.date).toLocaleDateString('en-US', { weekday: 'short' })}
-                  </span>
-                </div>
-                
-                {/* Stats - Tabular Numbers */}
-                <div className='flex items-center gap-3 text-sm tabular-nums'>
-                  <div className='flex items-center gap-1.5 text-slate-700'>
-                    <span className='font-medium'>{dateGroup.transactions.length}</span>
-                    <span className='text-slate-600'>transaction{dateGroup.transactions.length !== 1 ? 's' : ''}</span>
-                  </div>
-                  <span className='text-slate-400'>|</span>
-                  <div className='flex items-center gap-2 text-slate-700'>
-                    {dateGroup.grossBalance && dateGroup.grossBalance.tl !== undefined ? (
-                      // Show both TRY and USD from backend data with exchange rate
-                      <div className='flex items-center gap-3 tabular-nums'>
-                        <span className='font-medium text-slate-900'>{formatCurrency(dateGroup.grossBalance.tl, '₺')}</span>
-                        <span className='text-slate-400'>|</span>
-                        <span className='font-medium text-slate-900'>{formatCurrency(dateGroup.grossBalance.usd, '$')}</span>
-                        {dateGroup.grossBalance.rate > 0 && (
-                          <span className='text-xs text-slate-600'>
-                            @{dateGroup.grossBalance.rate.toFixed(2)}
-                          </span>
-                        )}
-                        <span className='text-slate-600 text-xs'>gross</span>
-                      </div>
-                    ) : (
-                      // Fallback: Calculate using NEW USD-first logic (matching backend)
-                      (() => {
-                        // Step 1: Calculate net amounts for each currency
-                        let tryNet = 0;
-                        let usdNet = 0;
-                        
-                        dateGroup.transactions.forEach(t => {
-                          const amount = t.amount || 0;
-                          const isWithdrawal = t.category && t.category.toUpperCase() === 'WD';
-                          const signedAmount = isWithdrawal ? -Math.abs(amount) : amount;
-                          
-                          // DEBUG: Log transaction details for September 30th
-                          if (dateGroup.dateKey.includes('2025-09-30')) {
-
-                          }
-                          
-                          if (t.currency === 'TRY' || t.currency === 'TL') {
-                            tryNet += signedAmount;
-                          } else if (t.currency === 'USD') {
-                            usdNet += signedAmount;
-                          }
-                        });
-                        
-                        // Step 2: Calculate USD Gross Balance FIRST
-                        // Formula: (TRY_net / rate) + USD_net
-                        const usdGross = (tryNet / currentUsdRate) + usdNet;
-                        
-                        // Step 3: Calculate TRY Gross Balance from USD
-                        // Formula: USD_gross * rate
-                        const tryGross = usdGross * currentUsdRate;
-                        
-                        // DEBUG: Log final calculation for September 30th
-                        if (dateGroup.dateKey.includes('2025-09-30')) {
-
-                        }
-                        
-                        return (
-                          <div className='flex items-center gap-3 tabular-nums'>
-                            <span className='font-medium text-slate-900'>{formatCurrency(tryGross, '₺')}</span>
-                            <span className='text-slate-400'>|</span>
-                            <span className='font-medium text-slate-900'>{formatCurrency(usdGross, '$')}</span>
-                            <span className='text-xs text-slate-600'>@{currentUsdRate.toFixed(2)}</span>
-                            <span className='text-slate-600 text-xs'>calc</span>
-                          </div>
-                        );
-                      })()
+              {/* Divider */}
+              <div className='h-4 w-px bg-gray-300' />
+              
+              {/* Transaction Count */}
+              <div className='text-sm text-gray-700'>
+                <span className='font-medium text-gray-900'>{dateGroup.transactions.length}</span>
+                <span className='text-gray-600 ml-1'>transactions</span>
+              </div>
+              
+              {/* Divider */}
+              <div className='h-4 w-px bg-gray-300' />
+              
+              {/* Amounts */}
+              <div className='flex items-center gap-4 text-sm tabular-nums'>
+                {dateGroup.grossBalance && dateGroup.grossBalance.tl !== undefined ? (
+                  // Show both TRY and USD from backend data with exchange rate
+                  <>
+                    <div className='flex items-center gap-1.5'>
+                      <span className='text-gray-600 text-xs'>TRY</span>
+                      <span className='font-semibold text-gray-900'>{formatCurrency(dateGroup.grossBalance.tl, '₺')}</span>
+                    </div>
+                    <div className='flex items-center gap-1.5'>
+                      <span className='text-gray-600 text-xs'>USD</span>
+                      <span className='font-semibold text-gray-900'>{formatCurrency(dateGroup.grossBalance.usd, '$')}</span>
+                    </div>
+                    {dateGroup.grossBalance.rate > 0 && (
+                      <span className='text-xs text-gray-500'>
+                        @{dateGroup.grossBalance.rate.toFixed(2)}
+                      </span>
                     )}
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  // Fallback: Calculate using NEW USD-first logic (matching backend)
+                  (() => {
+                    // Step 1: Calculate net amounts for each currency
+                    let tryNet = 0;
+                    let usdNet = 0;
+                    
+                    dateGroup.transactions.forEach(t => {
+                      const amount = t.amount || 0;
+                      const isWithdrawal = t.category && t.category.toUpperCase() === 'WD';
+                      const signedAmount = isWithdrawal ? -Math.abs(amount) : amount;
+                      
+                      if (t.currency === 'TRY' || t.currency === 'TL') {
+                        tryNet += signedAmount;
+                      } else if (t.currency === 'USD') {
+                        usdNet += signedAmount;
+                      }
+                    });
+                    
+                    // Step 2: Calculate USD Gross Balance FIRST
+                    // Formula: (TRY_net / rate) + USD_net
+                    const usdGross = (tryNet / currentUsdRate) + usdNet;
+                    
+                    // Step 3: Calculate TRY Gross Balance from USD
+                    // Formula: USD_gross * rate
+                    const tryGross = usdGross * currentUsdRate;
+                    
+                    return (
+                      <>
+                        <div className='flex items-center gap-1.5'>
+                          <span className='text-gray-600 text-xs'>TRY</span>
+                          <span className='font-semibold text-gray-900'>{formatCurrency(tryGross, '₺')}</span>
+                        </div>
+                        <div className='flex items-center gap-1.5'>
+                          <span className='text-gray-600 text-xs'>USD</span>
+                          <span className='font-semibold text-gray-900'>{formatCurrency(usdGross, '$')}</span>
+                        </div>
+                        <span className='text-xs text-gray-500'>
+                          @{currentUsdRate.toFixed(2)}
+                        </span>
+                      </>
+                    );
+                  })()
+                )}
               </div>
             </div>
             
-            {/* Action Buttons - Simplified */}
+            {/* Right: Action Buttons */}
             <div className='flex items-center gap-2'>
               <Button
                 onClick={() => fetchDailySummary(dateGroup.date)}
                 disabled={dailySummaryLoading}
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="inline-flex items-center gap-1.5"
+                className="h-8 px-3 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100"
               >
-                <BarChart className='h-3.5 w-3.5' />
                 {dailySummaryLoading && selectedDate === dateGroup.date ? 'Loading...' : 'Summary'}
               </Button>
               
               {/* Quick Edit Rate Button */}
-              {/* Show Edit Rate button if we have gross balance data with rate OR if we have transactions for this date (especially USD transactions) */}
               {(dateGroup.grossBalance && dateGroup.grossBalance.rate > 0) || 
                (dateGroup.transactions && dateGroup.transactions.length > 0 && 
                 dateGroup.transactions.some((t: Transaction) => t.currency === 'USD' || t.currency === 'EUR')) ? (
@@ -3154,12 +3246,11 @@ return breakdown;
                     dateGroup.date, 
                     dateGroup.grossBalance?.rate || currentUsdRate || 48.0
                   )}
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="inline-flex items-center gap-1.5"
+                  className="h-8 px-3 text-xs text-gray-700 hover:text-gray-900 hover:bg-gray-100"
                   title={`Edit exchange rate for ${dateGroup.date}`}
                 >
-                  <Edit className='h-3.5 w-3.5' />
                   Edit Rate
                 </Button>
               ) : null}
@@ -3376,12 +3467,12 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 onClick={handleExportAllTransactions}
                 disabled={exporting}
                 icon={exporting ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
                 ) : (
                   <Download className="h-4 w-4" />
                 )}
                 iconPosition="left"
-                className="bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100"
+                className="bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100"
               >
                 {exporting ? t('common.loading') : t('clients.export_all_transactions')}
               </UnifiedButton>
@@ -3392,7 +3483,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 disabled={importing}
                 icon={<Upload className="h-4 w-4" />}
                 iconPosition="left"
-                className="bg-green-50 border-green-300 text-green-700 hover:bg-green-100"
+                className="bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100"
               >
                 {importing ? t('common.loading') : t('clients.import')}
               </UnifiedButton>
@@ -3403,9 +3494,9 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 disabled={importing}
                 icon={<FileText className="h-4 w-4" />}
                 iconPosition="left"
-                className="bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100"
+                className="bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100"
               >
-                Paste & Import
+                {t('clients_page.paste_import')}
               </UnifiedButton>
               <UnifiedButton
                 variant="outline"
@@ -3423,7 +3514,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 onClick={() => setShowBulkDeleteModal(true)}
                 icon={<Trash2 className="h-4 w-4" />}
                 iconPosition="left"
-                className="bg-red-50 border-red-300 text-red-700 hover:bg-red-100"
+                className="bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100"
               >
                 {t('clients.bulk')}
               </UnifiedButton>
@@ -3469,11 +3560,12 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 {t('clients.fetch')}
               </UnifiedButton>
               <UnifiedButton
-                variant="primary"
+                variant="outline"
                 size="sm"
                 onClick={() => navigate('/transactions/add')}
                 icon={<Plus className="h-4 w-4" />}
                 iconPosition="left"
+                className="bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100"
               >
                 {t('clients.add_transaction')}
               </UnifiedButton>
@@ -3483,37 +3575,23 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
 
       <div className="space-y-6">
 
-{/* Status Indicators */}
-      <div className="bg-gray-50/50 border border-gray-200/60 rounded-xl p-4">
-        <div className='flex items-center gap-6 text-sm text-gray-700'>
-          <div className='flex items-center gap-2'>
-            <div className='w-2 h-2 bg-green-500 rounded-full'></div>
-                            <span className="font-medium">{t('dashboard.active_clients')}: {clients.length}</span>
-          </div>
-          <div className='flex items-center gap-2'>
-            <div className='w-2 h-2 bg-gray-400 rounded-full'></div>
-            <span className="font-medium">{t('clients.total_volume')}: {formatCurrency(totalVolume, '₺')}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Tab Navigation */}
+{/* Tab Navigation */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-4 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm">
           <TabsTrigger value="overview" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-            <BarChart3 className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+            <BarChart3 className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
             <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.overview')}</span>
           </TabsTrigger>
           <TabsTrigger value="clients" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-            <Users className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+            <Users className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
             <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('navigation.clients')}</span>
           </TabsTrigger>
           <TabsTrigger value="transactions" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-            <FileText className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+            <FileText className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
             <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('navigation.transactions')}</span>
           </TabsTrigger>
           <TabsTrigger value="analytics" className="group flex items-center gap-2 transition-all duration-300 ease-in-out hover:bg-white/90 hover:shadow-md hover:scale-[1.02] data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:border data-[state=active]:border-gray-200">
-            <LineChart className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-blue-600" />
+            <LineChart className="h-4 w-4 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:text-gray-700" />
             <span className="transition-all duration-300 ease-in-out group-hover:font-semibold">{t('tabs.analytics')}</span>
           </TabsTrigger>
         </TabsList>
@@ -4040,9 +4118,9 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <LineChart className="h-5 w-5 text-blue-600" />
-                  Transaction Volume Trend
+                  {t('clients_page.transaction_volume_trend')}
                 </CardTitle>
-                <CardDescription>Monthly deposits and withdrawals over time</CardDescription>
+                <CardDescription>{t('clients_page.monthly_deposits_withdrawals')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
@@ -4098,11 +4176,11 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 <div className="flex items-center justify-center gap-6 mt-4">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <span className="text-sm text-gray-600">Deposits</span>
+                    <span className="text-sm text-gray-600">{t('clients_page.deposits')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <span className="text-sm text-gray-600">Withdrawals</span>
+                    <span className="text-sm text-gray-600">{t('clients_page.withdrawals')}</span>
                   </div>
                 </div>
               </CardContent>
@@ -4113,9 +4191,9 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <PieChartIcon className="h-5 w-5 text-purple-600" />
-                  Payment Method Distribution
+                  {t('clients_page.payment_method_distribution')}
                 </CardTitle>
-                <CardDescription>Volume breakdown by payment method</CardDescription>
+                <CardDescription>{t('clients_page.volume_breakdown_payment')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
@@ -4162,9 +4240,9 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BarChart3 className="h-5 w-5 text-green-600" />
-                  Top Client Performance
+                  {t('clients_page.top_client_performance')}
                 </CardTitle>
-                <CardDescription>Volume by client ranking</CardDescription>
+                <CardDescription>{t('clients_page.volume_by_client_ranking')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
@@ -4210,9 +4288,9 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Globe className="h-5 w-5 text-blue-600" />
-                  Currency Distribution
+                  {t('clients_page.currency_distribution')}
                 </CardTitle>
-                <CardDescription>Volume breakdown by currency</CardDescription>
+                <CardDescription>{t('clients_page.volume_breakdown_currency')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-80">
@@ -4262,18 +4340,11 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                     <Users className='w-5 h-5 text-gray-600' />
                   </div>
                   <div>
-                    <h2 className='text-xl font-semibold text-gray-900'>Client Information</h2>
-                    <p className='text-sm text-gray-500'>Manage your client relationships and details</p>
+                    <h2 className='text-xl font-semibold text-gray-900'>{t('clients_page.client_information')}</h2>
+                    <p className='text-sm text-gray-500'>{t('clients_page.manage_client_relationships')}</p>
                   </div>
                 </div>
                 <div className='flex items-center gap-3'>
-                  <Button
-                    onClick={() => setShowAddModal(true)}
-                    className='bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2'
-                  >
-                    <Plus className='w-4 h-4' />
-                    Add Client
-                  </Button>
                 </div>
               </div>
             </div>
@@ -4287,18 +4358,19 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                   <table className='w-full'>
                     <thead>
                       <tr className='border-b border-gray-100'>
-                        <th className='text-left py-3 px-4 font-medium text-gray-600'>Client</th>
-                        <th className='text-left py-3 px-4 font-medium text-gray-600'>Company</th>
+                        <th className='text-left py-3 px-4 font-medium text-gray-600'>{t('clients_page.client')}</th>
+                        <th className='text-left py-3 px-4 font-medium text-gray-600'>{t('clients_page.company')}</th>
                         <th className='text-left py-3 px-4 font-medium text-gray-600'>{t('clients.total_amount')}</th>
-                        <th className='text-left py-3 px-4 font-medium text-gray-600'>Transactions</th>
-                        <th className='text-left py-3 px-4 font-medium text-gray-600'>Last Transaction</th>
-                        <th className='text-left py-3 px-4 font-medium text-gray-600'>Actions</th>
+                        <th className='text-left py-3 px-4 font-medium text-gray-600'>{t('clients_page.transactions')}</th>
+                        <th className='text-left py-3 px-4 font-medium text-gray-600'>{t('clients_page.last_transaction')}</th>
+                        <th className='text-left py-3 px-4 font-medium text-gray-600'>{t('common.actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {clients.map((client, index) => (
-                        <React.Fragment key={index}>
-                          <tr className='border-b border-gray-50 hover:bg-gray-50 hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer'>
+                      {filteredClients.length > 0 ? (
+                        filteredClients.map((client, index) => (
+                          <React.Fragment key={index}>
+                            <tr className='border-b border-gray-50 hover:bg-gray-50 hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer'>
                             <td className='py-4 px-4'>
                               <div className='flex items-center gap-3'>
                                 <div className='w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center'>
@@ -4308,12 +4380,12 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                                 </div>
                                 <div>
                                   <div className='font-medium text-gray-900'>{client.client_name}</div>
-                                  <div className='text-sm text-gray-500'>{client.company_name || 'N/A'}</div>
+                                  <div className='text-sm text-gray-500'>{client.company_name || t('common.na', 'N/A')}</div>
                                 </div>
                               </div>
                             </td>
                             <td className='py-4 px-4'>
-                              <div className='text-sm text-gray-900'>{client.company_name || 'N/A'}</div>
+                              <div className='text-sm text-gray-900'>{client.company_name || t('common.na', 'N/A')}</div>
                             </td>
                             <td className='py-4 px-4'>
                               <div className='text-sm font-medium text-gray-900'>
@@ -4327,7 +4399,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                               <div className='text-sm text-gray-600'>
                                 {client.last_transaction ? 
                                   new Date(client.last_transaction).toLocaleDateString() : 
-                                  'N/A'
+                                  t('common.na', 'N/A')
                                 }
                               </div>
                             </td>
@@ -4361,7 +4433,16 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                             </td>
                           </tr>
                         </React.Fragment>
-                      ))}
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className='py-12 text-center text-gray-500'>
+                            {filters.client_name 
+                              ? t('clients_page.no_clients_matching', { name: filters.client_name })
+                              : t('clients.no_clients_found')}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -4379,7 +4460,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
             <div className='p-6 border-b border-gray-100'>
               <div className='flex items-center justify-between'>
                 <h3 className='text-xl font-semibold text-gray-900'>
-                  Client Details
+                  {t('clients_page.client_details')}
                 </h3>
                 <Button
                   onClick={closeModal}
@@ -4402,7 +4483,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                     {selectedClient.client_name}
                   </h4>
                   <p className='text-gray-600'>
-                    {selectedClient.company_name || 'No Company'}
+                    {selectedClient.company_name || t('clients_page.no_company')}
                   </p>
                 </div>
               </div>
@@ -4422,7 +4503,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                   </p>
                 </div>
                 <div className='bg-gray-50 rounded-lg p-4'>
-                  <p className='text-sm text-gray-600'>Commissions</p>
+                  <p className='text-sm text-gray-600'>{t('clients_page.commissions')}</p>
                   <p className='text-xl font-bold text-success-600'>
                     {formatCurrency(
                       selectedClient.total_commission,
@@ -4434,7 +4515,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                   </p>
                 </div>
                 <div className='bg-gray-50 rounded-lg p-4'>
-                  <p className='text-sm text-gray-600'>Net Amount</p>
+                  <p className='text-sm text-gray-600'>{t('clients_page.net_amount')}</p>
                   <p className='text-xl font-bold text-accent-600'>
                     {formatCurrency(
                       selectedClient.total_net,
@@ -4450,7 +4531,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
               {/* Transaction Details */}
               <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                 <div className='bg-gray-50 rounded-lg p-4'>
-                  <p className='text-sm text-gray-600'>Transaction Count</p>
+                  <p className='text-sm text-gray-600'>{t('clients_page.transaction_count')}</p>
                   <p className='text-2xl font-bold text-gray-900'>
                     {selectedClient.transaction_count}
                   </p>
@@ -4476,7 +4557,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                     <Globe className='h-5 w-5 text-gray-400' />
                     <div>
                       <p className='text-sm font-medium text-gray-900'>
-                        Payment Method
+                        {t('clients_page.payment_method')}
                       </p>
                       <p className='text-sm text-gray-600'>
                         {selectedClient.payment_method}
@@ -4489,7 +4570,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                   selectedClient.currencies.length > 0 && (
                     <div>
                       <p className='text-sm font-medium text-gray-900 mb-2'>
-                        Currencies
+                        {t('clients_page.currencies')}
                       </p>
                       <div className='flex flex-wrap gap-2'>
                         {selectedClient.currencies.map(currency => (
@@ -4507,7 +4588,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 {selectedClient.psps && selectedClient.psps.length > 0 && (
                   <div>
                     <p className='text-sm font-medium text-gray-900 mb-2'>
-                      Payment Service Providers
+                      {t('clients_page.payment_service_providers')}
                     </p>
                     <div className='flex flex-wrap gap-2'>
                       {selectedClient.psps.map(psp => (
@@ -4526,12 +4607,12 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                   <Calendar className='h-5 w-5 text-gray-400' />
                   <div>
                     <p className='text-sm font-medium text-gray-900'>
-                      Last Transaction
+                      {t('clients_page.last_transaction')}
                     </p>
                     <p className='text-sm text-gray-600'>
                       {selectedClient.last_transaction
                         ? formatDate(selectedClient.last_transaction)
-                        : 'N/A'}
+                        : t('common.na', 'N/A')}
                     </p>
                   </div>
                 </div>
@@ -4543,7 +4624,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 variant="outline"
                 className='w-full'
               >
-                Close
+                {t('common.close')}
               </Button>
             </div>
           </div>
@@ -4557,7 +4638,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
             <div className='p-6 border-b border-gray-100'>
               <div className='flex items-center justify-between'>
                 <h3 className='text-xl font-semibold text-gray-900'>
-                  Edit Client
+                  {t('clients_page.edit_client')}
                 </h3>
                 <button
                   onClick={closeModal}
@@ -4569,21 +4650,20 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
             </div>
             <div className='p-6'>
               <p className='text-gray-600 mb-6'>
-                Edit functionality will be implemented here. This would include
-                forms for updating client information.
+                {t('clients_page.edit_functionality_placeholder')}
               </p>
               <div className='flex gap-3'>
                 <button
                   onClick={closeModal}
                   className='flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200'
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={closeModal}
                   className='flex-1 px-4 py-2 bg-accent-600 text-white rounded-lg hover:bg-accent-700 transition-colors duration-200'
                 >
-                  Save Changes
+                  {t('clients_page.save_changes')}
                 </button>
               </div>
             </div>
@@ -4598,7 +4678,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
             <div className='p-6 border-b border-gray-100'>
               <div className='flex items-center justify-between'>
                 <h3 className='text-xl font-semibold text-gray-900'>
-                  Delete Client
+                  {t('clients_page.delete_client')}
                 </h3>
                 <button
                   onClick={closeModal}
@@ -4615,15 +4695,13 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                 </div>
                 <div>
                   <p className='text-lg font-semibold text-gray-900'>
-                    Are you sure?
+                    {t('clients_page.are_you_sure')}
                   </p>
-                  <p className='text-gray-600'>This action cannot be undone.</p>
+                  <p className='text-gray-600'>{t('clients_page.action_cannot_undone')}</p>
                 </div>
               </div>
               <p className='text-gray-600 mb-6'>
-                You are about to delete{' '}
-                <strong>{selectedClient.client_name}</strong>. This will
-                permanently remove all associated data.
+                {t('clients_page.about_to_delete', { name: selectedClient.client_name })}
               </p>
               <div className='flex gap-3'>
                 <button
@@ -4631,14 +4709,14 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                   disabled={deleteLoading}
                   className='flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200 disabled:opacity-50'
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   onClick={confirmDeleteClient}
                   disabled={deleteLoading}
                   className='flex-1 px-4 py-2 bg-danger-600 text-white rounded-lg hover:bg-danger-700 transition-colors duration-200 disabled:opacity-50'
                 >
-                  {deleteLoading ? 'Deleting...' : 'Delete Client'}
+                  {deleteLoading ? t('clients_page.deleting') : t('clients_page.delete_client')}
                 </button>
               </div>
             </div>
@@ -4649,17 +4727,15 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
       {/* Daily Summary Modal */}
       {showDailySummaryModal && dailySummaryData && (
         <div className='fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4'>
-          <div className='bg-white rounded-2xl shadow-lg max-w-5xl w-full max-h-[85vh] overflow-hidden border border-gray-100'>
+          <div className='bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden border border-gray-200'>
             {/* Modal Header */}
-            <div className='bg-gray-50 border-b border-gray-200 p-6'>
+            <div className='bg-white border-b border-gray-200 px-6 py-4'>
               <div className='flex items-center justify-between'>
-                <div className='flex items-center gap-4'>
-                  <div className='w-10 h-10 bg-gray-200 rounded-xl flex items-center justify-center'>
-                    <Calendar className='h-5 w-5 text-gray-600' />
-                  </div>
+                <div className='flex items-center gap-3'>
+                  <Calendar className='h-5 w-5 text-gray-700' />
                   <div>
-                    <h2 className='text-xl font-semibold text-gray-900'>Daily Summary</h2>
-                    <p className='text-gray-500 text-sm'>
+                    <h2 className='text-lg font-semibold text-gray-900'>{t('daily_summary.title')}</h2>
+                    <p className='text-sm text-gray-500 mt-0.5'>
                       {dailySummaryData.date_str}
                     </p>
                   </div>
@@ -4674,328 +4750,455 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
             </div>
 
             {/* Modal Content */}
-            <div className='p-6 overflow-y-auto max-h-[calc(85vh-120px)]'>
+            <div className='p-6 overflow-y-auto max-h-[calc(90vh-100px)]'>
               {dailySummaryLoading ? (
                 <div className='flex items-center justify-center py-12'>
                   <div className='text-center'>
                     <div className='animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-gray-600 mx-auto mb-3'></div>
-                    <p className='text-gray-600 text-sm'>Loading summary...</p>
+                    <p className='text-gray-600 text-sm'>{t('daily_summary.loading_summary')}</p>
                   </div>
                 </div>
               ) : (
                 <div className='space-y-6'>
-                  {/* Key Metrics Section */}
                   {(() => {
                     const dailyMetrics = calculateDailyDepositWithdrawMetrics(dailySummaryData.date);
+                    const totalVolume = dailyMetrics.totalDeposits + dailyMetrics.totalWithdrawals;
+                    // NET = DEP - WD (deposits minus withdrawals, not sum)
+                    const depositsTL = dailySummaryData.total_deposits_tl || dailyMetrics.totalDeposits;
+                    const withdrawalsTL = dailySummaryData.total_withdrawals_tl || dailyMetrics.totalWithdrawals;
+                    const netBalance = depositsTL - withdrawalsTL;
+                    const totalCommission = dailySummaryData.total_commission_tl || 0;
+                    const avgTransactionValue = dailyMetrics.transactionCount > 0 ? totalVolume / dailyMetrics.transactionCount : 0;
+                    // Commission rate should be based on NET (deposits - withdrawals), not volume
+                    const netForCommission = Math.abs(netBalance); // Use absolute value to avoid division by zero for negative net
+                    const commissionRate = netForCommission > 0 ? (totalCommission / netForCommission) * 100 : 0;
+                    
+                    // Calculate net cash in USD: ((TOTAL BANK + TOTAL CC) - TOTAL COMMISSIONS) + TETHER
+                    // Get USD rate for currency conversion
+                    const usdRate = dailySummaryData.usd_rate || 42.64; // Fallback rate
+                    
+                    // Get BANK amount in USD (convert from TL if needed)
+                    let bankUSD = dailySummaryData.payment_method_totals?.BANK?.amount_usd || 0;
+                    if (bankUSD === 0 && dailySummaryData.payment_method_totals?.BANK?.amount_tl) {
+                        // Convert from TL to USD
+                        bankUSD = dailySummaryData.payment_method_totals.BANK.amount_tl / usdRate;
+                    }
+                    
+                    // Get CC amount in USD (convert from TL if needed)
+                    let ccUSD = dailySummaryData.payment_method_totals?.CC?.amount_usd || 0;
+                    if (ccUSD === 0 && dailySummaryData.payment_method_totals?.CC?.amount_tl) {
+                        // Convert from TL to USD
+                        ccUSD = dailySummaryData.payment_method_totals.CC.amount_tl / usdRate;
+                    }
+                    
+                    // TETHER is already in USD
+                    const tetherUSD = dailySummaryData.payment_method_totals?.TETHER?.amount_usd || 0;
+                    
+                    // Calculate commission USD from payment_method_summary for BANK and CC only (not TETHER)
+                    // Helper function to normalize payment method name (same logic as backend)
+                    const normalizePaymentMethod = (name: string): string => {
+                        if (!name) return 'OTHER';
+                        const nameLower = name.toLowerCase();
+                        if (nameLower.includes('bank') || nameLower.includes('banka') || nameLower.includes('havale') || 
+                            nameLower.includes('eft') || nameLower.includes('iban') || nameLower.includes('transfer') || nameLower.includes('wire')) {
+                            return 'BANK';
+                        }
+                        if (nameLower.includes('kk') || nameLower.includes('credit') || nameLower.includes('card') || 
+                            nameLower.includes('kredi') || nameLower.includes('visa') || nameLower.includes('mastercard') || nameLower.includes('amex')) {
+                            return 'CC';
+                        }
+                        if (nameLower.includes('tether') || nameLower.includes('usdt') || nameLower.includes('crypto') || nameLower.includes('kasa')) {
+                            return 'TETHER';
+                        }
+                        return 'OTHER';
+                    };
+                    
+                    // Sum commission from payment_method_summary for BANK and CC only (TETHER has no commission)
+                    let totalCommissionUSD = 0;
+                    if (dailySummaryData.payment_method_summary && Array.isArray(dailySummaryData.payment_method_summary)) {
+                        dailySummaryData.payment_method_summary.forEach((method: any) => {
+                            const normalized = normalizePaymentMethod(method.name || '');
+                            if (normalized === 'BANK' || normalized === 'CC') {
+                                // Get commission in USD, convert from TL if needed
+                                let commissionUSD = method.commission_usd || 0;
+                                if (commissionUSD === 0 && method.commission_tl) {
+                                    commissionUSD = method.commission_tl / usdRate;
+                                }
+                                totalCommissionUSD += commissionUSD;
+                            }
+                        });
+                    }
+                    
+                    // Fallback: if no commission from payment_method_summary, use total_commission_usd
+                    // But only count commission for BANK and CC (estimate: assume all commission is from BANK/CC)
+                    if (totalCommissionUSD === 0) {
+                        totalCommissionUSD = dailySummaryData.total_commission_usd || 0;
+                    }
+                    
+                    // Without Commission: Gross amounts (BANK + CC + TETHER)
+                    const netCashUSDWithoutCommission = bankUSD + ccUSD + tetherUSD;
+                    // With Commission: ((BANK + CC) - COMMISSIONS) + TETHER
+                    const netCashUSDWithCommission = ((bankUSD + ccUSD) - totalCommissionUSD) + tetherUSD;
+                    
+                    // Get top clients for the day
+                    const dateTransactions = Array.isArray(transactions) 
+                      ? transactions.filter(t => {
+                          const transactionDate = t.date ? t.date.split('T')[0] : null;
+                          return transactionDate === dailySummaryData.date;
+                        })
+                      : [];
+                    
+                    const clientTotals = dateTransactions.reduce((acc: any, t: any) => {
+                      const clientName = t.client_name || 'Unknown';
+                      if (!acc[clientName]) {
+                        acc[clientName] = { total: 0, count: 0 };
+                      }
+                      const amount = t.amount_tl !== null && t.amount_tl !== undefined ? t.amount_tl : t.amount || 0;
+                      acc[clientName].total += Math.abs(amount);
+                      acc[clientName].count += 1;
+                      return acc;
+                    }, {});
+                    
+                    const topClients = Object.entries(clientTotals)
+                      .map(([name, data]: [string, any]) => ({ name, total: data.total, count: data.count }))
+                      .sort((a, b) => b.total - a.total)
+                      .slice(0, 5);
+
+                    // Calculate currency breakdown
+                    const tryTransactions = dateTransactions.filter(t => t.currency === 'TRY' || t.currency === 'TL');
+                    const usdTransactions = dateTransactions.filter(t => t.currency === 'USD');
+                    const tryVolume = tryTransactions.reduce((sum, t) => {
+                      const amount = t.amount_tl !== null && t.amount_tl !== undefined ? t.amount_tl : t.amount || 0;
+                      return sum + Math.abs(amount);
+                    }, 0);
+                    const usdVolume = usdTransactions.reduce((sum, t) => {
+                      const amount = t.amount_usd || t.amount || 0;
+                      return sum + Math.abs(amount);
+                    }, 0);
+
                     return (
-                      <div className='space-y-4'>
-                        <div className='flex items-center gap-3'>
-                          <div className='w-1 h-6 bg-gray-400 rounded-full'></div>
-                          <h3 className='text-lg font-medium text-gray-900'>Overview</h3>
+                      <>
+                        {/* Primary Metrics */}
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                          {/* Total Deposits */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-5'>
+                            <div className='flex items-center justify-between mb-2.5'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_dep')}</span>
+                              <TrendingUp className='h-4 w-4 text-gray-400' />
+                            </div>
+                            <p className='text-3xl font-semibold text-gray-900 mb-1'>
+                              {formatCurrency(dailySummaryData.total_deposits_tl || dailyMetrics.totalDeposits, '₺')}
+                            </p>
+                            <div className='flex flex-col gap-1 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100'>
+                              <span>TRY: {formatCurrency(dailySummaryData.total_deposits_tl || dailyMetrics.totalDeposits, '₺')}</span>
+                              <span>USD: ${(dailySummaryData.total_deposits_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+
+                          {/* Total Withdrawals */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-5'>
+                            <div className='flex items-center justify-between mb-2.5'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_wd')}</span>
+                              <TrendingDown className='h-4 w-4 text-gray-400' />
+                            </div>
+                            <p className='text-3xl font-semibold text-gray-900 mb-1'>
+                              {formatCurrency(dailySummaryData.total_withdrawals_tl || dailyMetrics.totalWithdrawals, '₺')}
+                            </p>
+                            <div className='flex flex-col gap-1 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100'>
+                              <span>TRY: {formatCurrency(dailySummaryData.total_withdrawals_tl || dailyMetrics.totalWithdrawals, '₺')}</span>
+                              <span>USD: ${(dailySummaryData.total_withdrawals_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+
+                          {/* Net Balance */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-5'>
+                            <div className='flex items-center justify-between mb-2.5'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.net')}</span>
+                              <Activity className='h-4 w-4 text-gray-400' />
+                            </div>
+                            <p className={`text-3xl font-semibold mb-1 ${netBalance >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                              {formatCurrency(netBalance, '₺')}
+                            </p>
+                            <div className='flex flex-col gap-1 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100'>
+                              <span>TRY: {formatCurrency(netBalance, '₺')}</span>
+                              <span>USD: ${((dailySummaryData.total_deposits_usd || 0) - (dailySummaryData.total_withdrawals_usd || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
                         </div>
-                        
-                        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
-                          {/* Deposits */}
-                          <div className='bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow duration-200'>
-                            <div className='flex items-center justify-between mb-3'>
-                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
-                                <TrendingUp className='h-4 w-4 text-green-600' />
-                              </div>
-                              <span className='text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full'>
-                                Deposits
-                              </span>
+
+                        {/* Breakdown (easy to scan) */}
+                        <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+                          {/* TOTAL BANK */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_bank')}</span>
+                              <CreditCard className='h-4 w-4 text-gray-400' />
                             </div>
                             <p className='text-2xl font-semibold text-gray-900 mb-1'>
-                              {formatCurrency(dailyMetrics.totalDeposits, '₺')}
+                              {formatCurrency(dailySummaryData.payment_method_totals?.BANK?.amount_tl || 0, '₺')}
                             </p>
-                            <p className='text-xs text-gray-500'>{t('clients.total_incoming')}</p>
                           </div>
 
-                          {/* Withdrawals */}
-                          <div className='bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow duration-200'>
-                            <div className='flex items-center justify-between mb-3'>
-                              <div className='w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center'>
-                                <TrendingUp className='h-4 w-4 text-red-600 rotate-180' />
-                              </div>
-                              <span className='text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-full'>
-                                Withdrawals
-                              </span>
+                          {/* TOTAL CC */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_cc')}</span>
+                              <CreditCard className='h-4 w-4 text-gray-400' />
                             </div>
                             <p className='text-2xl font-semibold text-gray-900 mb-1'>
-                              {formatCurrency(dailyMetrics.totalWithdrawals, '₺')}
+                              {formatCurrency(dailySummaryData.payment_method_totals?.CC?.amount_tl || 0, '₺')}
                             </p>
-                            <p className='text-xs text-gray-500'>{t('clients.total_outgoing')}</p>
                           </div>
 
-                          {/* Net Flow */}
-                          <div className='bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow duration-200'>
-                            <div className='flex items-center justify-between mb-3'>
-                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
-                                <Activity className='h-4 w-4 text-gray-600' />
-                              </div>
-                              <span className='text-xs font-medium text-gray-600 bg-gray-50 px-2 py-1 rounded-full'>
-                                Net
-                              </span>
+                          {/* TETHER */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.tether')}</span>
+                              <DollarSign className='h-4 w-4 text-gray-400' />
                             </div>
-                            <p className={`text-2xl font-semibold mb-1 ${(dailySummaryData?.gross_balance_tl || dailyMetrics.totalDeposits - dailyMetrics.totalWithdrawals) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {formatCurrency(dailySummaryData?.gross_balance_tl || dailyMetrics.totalDeposits - dailyMetrics.totalWithdrawals, '₺')}
+                            <p className='text-2xl font-semibold text-gray-900 mb-1'>
+                              ${(dailySummaryData.payment_method_totals?.TETHER?.amount_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
-                            <p className='text-xs text-gray-500'>Balance</p>
+                          </div>
+
+                          {/* Total Commission */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.commission')}</span>
+                              <DollarSign className='h-4 w-4 text-gray-400' />
+                            </div>
+                            <p className='text-2xl font-semibold text-gray-900 mb-1'>
+                              {formatCurrency(totalCommission, '₺')}
+                            </p>
+                            <p className='text-xs text-gray-500 mt-2'>
+                              {commissionRate.toFixed(2)}% {t('daily_summary.of_net')}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* USD + Activity (secondary) */}
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                          {/* Net Cash USD Without Commission */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.net_cash_usd')}</span>
+                              <DollarSign className='h-4 w-4 text-gray-400' />
+                            </div>
+                            <p className={`text-2xl font-semibold mb-1 ${netCashUSDWithoutCommission >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                              ${netCashUSDWithoutCommission.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className='text-xs text-gray-500 mt-2'>
+                              {t('daily_summary.without_commission')}
+                            </p>
+                          </div>
+
+                          {/* Net Cash USD With Commission */}
+                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.net_cash_usd_commission')}</span>
+                              <DollarSign className='h-4 w-4 text-gray-400' />
+                            </div>
+                            <p className={`text-2xl font-semibold mb-1 ${netCashUSDWithCommission >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                              ${netCashUSDWithCommission.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className='text-xs text-gray-500 mt-2'>
+                              {t('daily_summary.with_commission')}
+                            </p>
                           </div>
 
                           {/* Statistics */}
-                          <div className='bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow duration-200'>
-                            <div className='flex items-center justify-between mb-3'>
-                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
-                                <BarChart3 className='h-4 w-4 text-gray-600' />
-                              </div>
-                              <span className='text-xs font-medium text-gray-600 bg-gray-50 px-2 py-1 rounded-full'>
-                                Stats
-                              </span>
+                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.activity')}</span>
+                              <Users className='h-4 w-4 text-gray-400' />
                             </div>
-                            <div className='space-y-2'>
+                            <div className='space-y-1.5'>
                               <div className='flex justify-between items-center text-sm'>
-                                <span className='text-gray-600'>Transactions</span>
+                                <span className='text-gray-600'>{t('daily_summary.transactions')}</span>
                                 <span className='font-semibold text-gray-900'>{dailyMetrics.transactionCount}</span>
                               </div>
                               <div className='flex justify-between items-center text-sm'>
-                                <span className='text-gray-600'>Clients</span>
+                                <span className='text-gray-600'>{t('daily_summary.clients')}</span>
                                 <span className='font-semibold text-gray-900'>{dailyMetrics.uniqueClients}</span>
                               </div>
                               {dailyMetrics.transactionCount > 0 && (
-                                <div className='flex justify-between items-center text-sm'>
-                                  <span className='text-gray-600'>{t('common.average')}</span>
+                                <div className='flex justify-between items-center text-sm pt-1 border-t border-gray-100'>
+                                  <span className='text-gray-600'>{t('daily_summary.avg_value')}</span>
                                   <span className='font-semibold text-gray-900'>
-                                    {formatCurrency((dailyMetrics.totalDeposits + dailyMetrics.totalWithdrawals) / dailyMetrics.transactionCount)}
+                                    {formatCurrency(avgTransactionValue, '₺')}
                                   </span>
                                 </div>
                               )}
                             </div>
                           </div>
                         </div>
-                      </div>
+
+                        {/* Secondary Metrics Row */}
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                          {/* Exchange Rate */}
+                          {dailySummaryData.usd_rate !== null && dailySummaryData.usd_rate !== undefined && (
+                            <div className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+                              <div className='flex items-center justify-between mb-2'>
+                                <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.usd_exchange_rate')}</span>
+                                <DollarSign className='h-4 w-4 text-gray-400' />
+                              </div>
+                              <p className='text-xl font-semibold text-gray-900'>
+                                {Number(dailySummaryData.usd_rate).toFixed(2)} ₺
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Currency Breakdown */}
+                          <div className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+                            <div className='flex items-center justify-between mb-2'>
+                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.currency_distribution')}</span>
+                              <Globe className='h-4 w-4 text-gray-400' />
+                            </div>
+                            <div className='space-y-1.5'>
+                              <div className='flex justify-between items-center text-sm'>
+                                <span className='text-gray-600'>{t('daily_summary.try_volume')}</span>
+                                <span className='font-semibold text-gray-900'>{formatCurrency(tryVolume, '₺')}</span>
+                              </div>
+                              <div className='flex justify-between items-center text-sm'>
+                                <span className='text-gray-600'>{t('daily_summary.usd_volume')}</span>
+                                <span className='font-semibold text-gray-900'>${usdVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Top Client */}
+                          {topClients.length > 0 && (
+                            <div className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+                              <div className='flex items-center justify-between mb-2'>
+                                <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.top_client')}</span>
+                                <Award className='h-4 w-4 text-gray-400' />
+                              </div>
+                              <p className='text-sm font-semibold text-gray-900 truncate mb-1'>{topClients[0].name}</p>
+                              <p className='text-xs text-gray-600'>{formatCurrency(topClients[0].total, '₺')}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Detailed Breakdowns */}
+                        <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+                          {/* PSP Summary */}
+                          {dailySummaryData.psp_summary.length > 0 && (
+                            <div className='bg-white border border-gray-200 rounded-lg p-5'>
+                              <div className='flex items-center gap-2 mb-4 pb-3 border-b border-gray-200'>
+                                <Building2 className='h-4 w-4 text-gray-600' />
+                                <h3 className='text-sm font-semibold text-gray-900'>{t('daily_summary.payment_service_providers')}</h3>
+                                <span className='ml-auto text-xs text-gray-500'>{dailySummaryData.psp_summary.length} {t('daily_summary.psps')}</span>
+                              </div>
+                              <div className='space-y-3'>
+                                {dailySummaryData.psp_summary.slice(0, 5).map((psp, idx) => {
+                                  const isTether = psp.is_tether || (psp.name && (psp.name.toLowerCase().includes('tether') || psp.name === 'TETHER'));
+                                  const grossAmount = isTether ? (psp.gross_usd || psp.amount_usd || 0) : (psp.gross_tl || psp.amount_tl || 0);
+                                  const commission = isTether ? psp.commission_usd : psp.commission_tl;
+                                  const netAmount = isTether ? psp.net_usd : psp.net_tl;
+                                  const currencySymbol = isTether ? '$' : '₺';
+                                  
+                                  return (
+                                    <div key={idx} className='bg-gray-50 rounded-lg p-3 border border-gray-100'>
+                                      <div className='flex justify-between items-start mb-2'>
+                                        <div className='flex-1 min-w-0'>
+                                          <p className='text-sm font-medium text-gray-900 truncate'>{psp.name}</p>
+                                        </div>
+                                      </div>
+                                      <div className='grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-200'>
+                                        <div>
+                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.gross')}</p>
+                                          <p className='text-sm font-semibold text-gray-900'>
+                                            {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.commission_label')}</p>
+                                          <p className='text-sm font-semibold text-gray-700'>
+                                            {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.net')}</p>
+                                          <p className='text-sm font-semibold text-gray-900'>
+                                            {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                {dailySummaryData.psp_summary.length > 5 && (
+                                  <div className='text-center pt-2 border-t border-gray-100'>
+                                    <span className='text-xs text-gray-500'>
+                                      {t('daily_summary.more_psps', { count: dailySummaryData.psp_summary.length - 5 })}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Payment Methods Summary */}
+                          {dailySummaryData.payment_method_summary.length > 0 && (
+                            <div className='bg-white border border-gray-200 rounded-lg p-5'>
+                              <div className='flex items-center gap-2 mb-4 pb-3 border-b border-gray-200'>
+                                <CreditCard className='h-4 w-4 text-gray-600' />
+                                <h3 className='text-sm font-semibold text-gray-900'>{t('daily_summary.payment_methods')}</h3>
+                                <span className='ml-auto text-xs text-gray-500'>{dailySummaryData.payment_method_summary.length} {t('daily_summary.methods')}</span>
+                              </div>
+                              <div className='space-y-3'>
+                                {dailySummaryData.payment_method_summary.slice(0, 5).map((method, idx) => {
+                                  const isTether = method.name && (method.name.toLowerCase().includes('tether') || method.name === 'TETHER');
+                                  const grossAmount = isTether ? (method.gross_usd || method.amount_usd || 0) : (method.gross_tl || method.amount_tl || 0);
+                                  const commission = isTether ? method.commission_usd : method.commission_tl;
+                                  const netAmount = isTether ? method.net_usd : method.net_tl;
+                                  const currencySymbol = isTether ? '$' : '₺';
+                                  
+                                  return (
+                                    <div key={idx} className='bg-gray-50 rounded-lg p-3 border border-gray-100'>
+                                      <div className='flex justify-between items-start mb-2'>
+                                        <div className='flex-1 min-w-0'>
+                                          <p className='text-sm font-medium text-gray-900'>{normalizePaymentMethodName(method.name)}</p>
+                                        </div>
+                                      </div>
+                                      <div className='grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-200'>
+                                        <div>
+                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.gross')}</p>
+                                          <p className='text-sm font-semibold text-gray-900'>
+                                            {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.commission_label')}</p>
+                                          <p className='text-sm font-semibold text-gray-700'>
+                                            {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.net')}</p>
+                                          <p className='text-sm font-semibold text-gray-900'>
+                                            {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                {dailySummaryData.payment_method_summary.length > 5 && (
+                                  <div className='text-center pt-2 border-t border-gray-100'>
+                                    <span className='text-xs text-gray-500'>
+                                      {t('daily_summary.more_methods', { count: dailySummaryData.payment_method_summary.length - 5 })}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                      </>
                     );
                   })()}
-
-                  {/* USD Rate */}
-                  {dailySummaryData.usd_rate !== null && dailySummaryData.usd_rate !== undefined && (
-                    <div className='bg-gray-50 border border-gray-200 rounded-xl p-4'>
-                      <div className='flex items-center gap-3'>
-                        <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
-                          <DollarSign className='h-4 w-4 text-gray-600' />
-                        </div>
-                        <div>
-                          <p className='text-sm font-medium text-gray-700'>USD Rate</p>
-                          <p className='text-xl font-semibold text-gray-900'>${Number(dailySummaryData.usd_rate).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Payment Methods Breakdown */}
-                  {(() => {
-                    const dailyPaymentBreakdown = calculateDailyPaymentMethodBreakdown(dailySummaryData.date);
-                    return Object.keys(dailyPaymentBreakdown).length > 0 ? (
-                      <div className='space-y-4'>
-                        <div className='flex items-center gap-3'>
-                          <div className='w-1 h-6 bg-gray-400 rounded-full'></div>
-                          <h3 className='text-lg font-medium text-gray-900'>Payment Methods</h3>
-                        </div>
-                        
-                        <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
-                          {Object.entries(dailyPaymentBreakdown)
-                            .sort(([, a], [, b]) => Math.abs(b.total) - Math.abs(a.total))
-                            .map(([method, data]) => (
-                              <div key={method} className='bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow duration-200'>
-                                <div className='flex items-center justify-between mb-3'>
-                                  <h4 className='text-sm font-medium text-gray-900'>{method}</h4>
-                                  <div className={`text-sm font-semibold px-2 py-1 rounded-full ${data.total >= 0 ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
-                                    {formatCurrency(Math.abs(data.total), '₺')}
-                                  </div>
-                                </div>
-                                
-                                <div className='grid grid-cols-2 gap-3'>
-                                  <div className='bg-green-50 border border-green-100 rounded-lg p-3'>
-                                    <div className='flex items-center gap-2 mb-1'>
-                                      <TrendingUp className='h-3 w-3 text-green-600' />
-                                      <span className='text-xs font-medium text-green-700'>Deposits</span>
-                                    </div>
-                                    <p className='text-lg font-semibold text-green-900'>
-                                      {formatCurrency(data.deposits, '₺')}
-                                    </p>
-                                  </div>
-                                  
-                                  <div className='bg-red-50 border border-red-100 rounded-lg p-3'>
-                                    <div className='flex items-center gap-2 mb-1'>
-                                      <TrendingUp className='h-3 w-3 text-red-600 rotate-180' />
-                                      <span className='text-xs font-medium text-red-700'>Withdrawals</span>
-                                    </div>
-                                    <p className='text-lg font-semibold text-red-900'>
-                                      {formatCurrency(data.withdrawals, '₺')}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-
-                  {/* Distribution Summary */}
-                  {dailySummaryData.transaction_count > 0 && (
-                    <div className='space-y-4'>
-                      <div className='flex items-center gap-3'>
-                        <div className='w-1 h-6 bg-gray-400 rounded-full'></div>
-                        <h3 className='text-lg font-medium text-gray-900'>Breakdown</h3>
-                      </div>
-                      
-                      <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                        {/* PSP Distribution */}
-                        {dailySummaryData.psp_summary.length > 0 && (
-                          <div className='bg-white border border-gray-200 rounded-xl p-4'>
-                            <div className='flex items-center gap-3 mb-3'>
-                              <div className='w-6 h-6 bg-gray-100 rounded-lg flex items-center justify-center'>
-                                <Building2 className='h-3 w-3 text-gray-600' />
-                              </div>
-                              <h4 className='text-sm font-medium text-gray-900'>PSPs</h4>
-                            </div>
-                            <div className='space-y-3'>
-                              {dailySummaryData.psp_summary.slice(0, 4).map((psp, idx) => {
-                                // Use backend-provided is_tether flag or fallback to name check
-                                const isTether = psp.is_tether || (psp.name && (psp.name.toLowerCase().includes('tether') || psp.name === 'TETHER'));
-                                const grossAmount = isTether ? (psp.gross_usd || psp.amount_usd || 0) : (psp.gross_tl || psp.amount_tl || 0);
-                                const commission = isTether ? psp.commission_usd : psp.commission_tl;
-                                const netAmount = isTether ? psp.net_usd : psp.net_tl;
-                                const currencySymbol = isTether ? '$' : '₺';
-                                
-                                return (
-                                  <div key={idx} className='bg-gray-50 rounded-lg p-3'>
-                                    <div className='flex justify-between items-center mb-2'>
-                                      <span className='text-sm font-medium text-gray-700 truncate'>{psp.name}</span>
-                                      <span className='text-xs text-gray-500'>{psp.count} tx</span>
-                                    </div>
-                                    <div className='space-y-1.5 text-xs'>
-                                      <div className='flex justify-between items-center'>
-                                        <span className='text-gray-600'>Gross</span>
-                                        <span className='font-semibold text-blue-600'>
-                                          {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </span>
-                                      </div>
-                                      <div className='flex justify-between items-center'>
-                                        <span className='text-gray-600'>Commission</span>
-                                        <span className='font-semibold text-orange-600'>
-                                          {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </span>
-                                      </div>
-                                      <div className='flex justify-between items-center pt-1 border-t border-gray-200'>
-                                        <span className='text-gray-600'>Net</span>
-                                        <span className='font-bold text-green-600'>
-                                          {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              {dailySummaryData.psp_summary.length > 4 && (
-                                <div className='text-center pt-2 border-t border-gray-100'>
-                                  <span className='text-xs text-gray-500'>
-                                    +{dailySummaryData.psp_summary.length - 4} more
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Category Distribution */}
-                        {dailySummaryData.category_summary.length > 0 && (
-                          <div className='bg-white border border-gray-200 rounded-xl p-4'>
-                            <div className='flex items-center gap-3 mb-3'>
-                              <div className='w-6 h-6 bg-gray-100 rounded-lg flex items-center justify-center'>
-                                <FileText className='h-3 w-3 text-gray-600' />
-                              </div>
-                              <h4 className='text-sm font-medium text-gray-900'>Categories</h4>
-                            </div>
-                            <div className='space-y-2'>
-                              {dailySummaryData.category_summary.slice(0, 4).map((category, idx) => (
-                                <div key={idx} className='flex justify-between items-center text-sm'>
-                                  <span className='text-gray-600 truncate'>{category.name}</span>
-                                  <span className='font-medium text-gray-900'>{category.count}</span>
-                                </div>
-                              ))}
-                              {dailySummaryData.category_summary.length > 4 && (
-                                <div className='text-center pt-2 border-t border-gray-100'>
-                                  <span className='text-xs text-gray-500'>
-                                    +{dailySummaryData.category_summary.length - 4} more
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Payment Methods */}
-                        {dailySummaryData.payment_method_summary.length > 0 && (
-                          <div className='bg-white border border-gray-200 rounded-xl p-4'>
-                            <div className='flex items-center gap-3 mb-3'>
-                              <div className='w-6 h-6 bg-gray-100 rounded-lg flex items-center justify-center'>
-                                <CreditCard className='h-3 w-3 text-gray-600' />
-                              </div>
-                              <h4 className='text-sm font-medium text-gray-900'>Payment Methods</h4>
-                            </div>
-                            <div className='space-y-3'>
-                              {dailySummaryData.payment_method_summary.slice(0, 4).map((method, idx) => {
-                                // Check if this payment method is Tether to show USD
-                                const isTether = method.name && (method.name.toLowerCase().includes('tether') || method.name === 'TETHER');
-                                const grossAmount = isTether ? (method.gross_usd || method.amount_usd || 0) : (method.gross_tl || method.amount_tl || 0);
-                                const commission = isTether ? method.commission_usd : method.commission_tl;
-                                const netAmount = isTether ? method.net_usd : method.net_tl;
-                                const currencySymbol = isTether ? '$' : '₺';
-                                
-                                return (
-                                  <div key={idx} className='bg-gray-50 rounded-lg p-3'>
-                                    <div className='flex justify-between items-center mb-2'>
-                                      <span className='text-sm font-medium text-gray-700'>{normalizePaymentMethodName(method.name)}</span>
-                                      <span className='text-xs text-gray-500'>{method.count} tx</span>
-                                    </div>
-                                    <div className='space-y-1.5 text-xs'>
-                                      <div className='flex justify-between items-center'>
-                                        <span className='text-gray-600'>Gross (Before Comm.)</span>
-                                        <span className='font-semibold text-blue-600'>
-                                          {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </span>
-                                      </div>
-                                      <div className='flex justify-between items-center'>
-                                        <span className='text-gray-600'>Commission</span>
-                                        <span className='font-semibold text-orange-600'>
-                                          {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </span>
-                                      </div>
-                                      <div className='flex justify-between items-center pt-1 border-t border-gray-200'>
-                                        <span className='text-gray-600'>Net (After Comm.)</span>
-                                        <span className='font-bold text-green-600'>
-                                          {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                              {dailySummaryData.payment_method_summary.length > 4 && (
-                                <div className='text-center pt-2 border-t border-gray-100'>
-                                  <span className='text-xs text-gray-500'>
-                                    +{dailySummaryData.payment_method_summary.length - 4} more
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -5350,7 +5553,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                setShowPasteImport(false);
                setPasteData('');
              }}
-             title="Paste & Import Transactions"
+             title={t('clients_page.paste_import_transactions')}
              size="lg"
            >
              <div className="space-y-4">
@@ -5476,10 +5679,9 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                      <Info className="w-4 h-4 text-gray-600" />
                    </div>
                    <div className="flex-1">
-                     <h5 className="text-sm font-medium text-gray-900 mb-1">USD/TRY Exchange Rate</h5>
+                     <h5 className="text-sm font-medium text-gray-900 mb-1">{t('clients.exchange_rate_modal.exchange_rate_label')}</h5>
                      <p className="text-sm text-gray-600 leading-relaxed">
-                       This rate is used to calculate gross balances for {editingDate}.
-                       Changing this rate will recalculate all balances for this date.
+                       {t('clients.exchange_rate_modal.description', { date: editingDate })}
                      </p>
                    </div>
                  </div>
@@ -5488,7 +5690,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                {/* Rate Input */}
                <div className="space-y-3">
                  <label className="block text-sm font-medium text-gray-700">
-                   Exchange Rate (USD/TRY)
+                   {t('clients.exchange_rate_modal.exchange_rate_label')}
                  </label>
                  <div className="flex gap-3">
                    <Input
@@ -5498,7 +5700,7 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                      value={editingRate}
                      onChange={(e) => setEditingRate(e.target.value)}
                      className="flex-1"
-                     placeholder="Enter exchange rate (e.g., 48.3900)"
+                     placeholder={t('clients.exchange_rate_modal.enter_rate_placeholder')}
                      disabled={rateEditLoading}
                    />
                    <UnifiedButton
@@ -5508,25 +5710,25 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                      className="flex items-center gap-2 whitespace-nowrap"
                    >
                      <CalendarDays className="w-4 h-4" />
-                     Select Date
+                     {t('clients.exchange_rate_modal.select_date')}
                    </UnifiedButton>
                  </div>
                  <p className="text-xs text-gray-500">
-                   Example: 48.3900 means 1 USD = 48.39 TRY
+                   {t('clients.exchange_rate_modal.rate_example')}
                  </p>
                </div>
 
                {/* Preview Section */}
                {editingRate && parseFloat(editingRate) > 0 && (
                  <UnifiedCard className="p-4">
-                   <h5 className="text-sm font-medium text-gray-900 mb-3">Preview</h5>
+                   <h5 className="text-sm font-medium text-gray-900 mb-3">{t('clients.exchange_rate_modal.preview')}</h5>
                    <div className="space-y-3">
                      <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                       <span className="text-sm text-gray-600">New Rate:</span>
+                       <span className="text-sm text-gray-600">{t('clients.exchange_rate_modal.new_rate')}</span>
                        <span className="text-sm font-medium text-gray-900">1 USD = {parseFloat(editingRate).toFixed(4)} TRY</span>
                      </div>
                      <div className="flex justify-between items-center py-2">
-                       <span className="text-sm text-gray-600">Inverse:</span>
+                       <span className="text-sm text-gray-600">{t('clients.exchange_rate_modal.inverse')}</span>
                        <span className="text-sm font-medium text-gray-900">1 TRY = {(1 / parseFloat(editingRate)).toFixed(6)} USD</span>
                      </div>
                    </div>
@@ -5540,14 +5742,14 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                    disabled={rateEditLoading}
                    variant="outline"
                  >
-                   Cancel
+                   {t('common.cancel')}
                  </UnifiedButton>
                  <UnifiedButton
                    onClick={handleRateSave}
                    disabled={rateEditLoading || !editingRate || parseFloat(editingRate) <= 0}
                    variant="primary"
                  >
-                   {rateEditLoading ? 'Saving...' : 'Save Rate'}
+                   {rateEditLoading ? t('clients.exchange_rate_modal.saving') : t('clients.exchange_rate_modal.save_rate')}
                  </UnifiedButton>
                </div>
              </div>
@@ -5567,9 +5769,9 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                  <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-full bg-gray-100">
                    <CalendarDays className="w-6 h-6 text-gray-600" />
                  </div>
-                 <h5 className="text-sm font-medium text-gray-900 mb-2">Choose Date</h5>
+                 <h5 className="text-sm font-medium text-gray-900 mb-2">{t('clients.exchange_rate_modal.choose_date')}</h5>
                  <p className="text-sm text-gray-600 mb-4">
-                   Select a date to fetch the USD/TRY exchange rate from yfinance
+                   {t('clients.exchange_rate_modal.select_date_description')}
                  </p>
                  
                  <Input
@@ -5586,14 +5788,14 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                    onClick={() => setShowCalendar(false)}
                    variant="outline"
                  >
-                   Cancel
+                   {t('common.cancel')}
                  </UnifiedButton>
                  <UnifiedButton
                    onClick={() => handleCalendarDateSelect(selectedCalendarDate)}
                    disabled={!selectedCalendarDate || rateEditLoading}
                    variant="primary"
                  >
-                   {rateEditLoading ? 'Fetching...' : 'Get Rate'}
+                   {rateEditLoading ? t('clients.exchange_rate_modal.fetching') : t('clients.exchange_rate_modal.get_rate')}
                  </UnifiedButton>
                </div>
              </div>

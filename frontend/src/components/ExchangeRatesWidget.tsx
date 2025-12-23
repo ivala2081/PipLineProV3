@@ -63,10 +63,10 @@ const ExchangeRatesWidget = memo<ExchangeRatesWidgetProps>(({
 
   return (
     <div className='bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden'>
-      <div className='px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-green-50 to-green-100/50'>
+      <div className='px-6 py-4 border-b border-gray-100 bg-gray-50'>
         <div className='flex items-center justify-between'>
           <div className='flex items-center gap-3'>
-            <div className='w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-sm'>
+            <div className='w-8 h-8 bg-gray-700 rounded-lg flex items-center justify-center shadow-sm'>
               <Globe className='h-4 w-4 text-white' />
             </div>
             <div>

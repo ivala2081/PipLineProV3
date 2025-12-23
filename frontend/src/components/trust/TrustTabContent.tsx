@@ -763,7 +763,7 @@ const TrustTabContent: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="w-full bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+      <div className="w-full bg-gradient-to-br from-slate-50 via-white to-blue-50 min-h-screen">
         {/* Enhanced Header Skeleton */}
         <div className="mb-8 px-6 pt-6">
           <div className="flex items-center justify-between">
@@ -842,7 +842,7 @@ const TrustTabContent: React.FC = () => {
   }
 
   return (
-    <div className="w-full bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div className="w-full bg-gradient-to-br from-slate-50 via-white to-blue-50 min-h-screen">
       {/* Enhanced Header */}
       <div className="mb-8 px-6 pt-6">
         <div className="flex items-center justify-between">
@@ -853,9 +853,9 @@ const TrustTabContent: React.FC = () => {
               </div>
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  Trust Wallets
+                  {t('trust_wallet.trust_wallets')}
                 </h1>
-                <p className="text-gray-600 font-medium">Manage your blockchain wallets and transactions</p>
+                <p className="text-gray-600 font-medium">{t('trust_wallet.manage_blockchain_wallets')}</p>
               </div>
             </div>
           </div>
@@ -865,23 +865,23 @@ const TrustTabContent: React.FC = () => {
               className="px-5 py-2.5 text-sm font-medium border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors bg-white"
             >
               <RefreshCw className="h-4 w-4 inline mr-2" />
-              Refresh
+              {t('trust_wallet.refresh')}
             </button>
             <button
               onClick={handleSyncAllWallets}
               disabled={syncingWallets.size > 0 || wallets.length === 0}
               className="px-5 py-2.5 text-sm font-medium border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-colors bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-              title={wallets.length === 0 ? "No wallets to sync" : "Sync all wallets"}
+              title={wallets.length === 0 ? t('trust_wallet.no_wallets_to_sync') : t('trust_wallet.sync_all_wallets')}
             >
               <RefreshCw className={`h-4 w-4 inline mr-2 ${syncingWallets.size > 0 ? 'animate-spin' : ''}`} />
-              Sync All {syncingWallets.size > 0 && `(${syncingWallets.size}/${wallets.length})`}
+              {t('trust_wallet.sync_all')} {syncingWallets.size > 0 && `(${syncingWallets.size}/${wallets.length})`}
             </button>
             <button
               onClick={() => setShowAddModal(true)}
               className="group px-6 py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm hover:shadow-md"
             >
               <Plus className="h-4 w-4 inline mr-2" />
-              Add Wallet
+              {t('trust_wallet.add_wallet')}
             </button>
           </div>
         </div>
@@ -914,7 +914,7 @@ const TrustTabContent: React.FC = () => {
             </div>
             <input
               type="text"
-              placeholder="Search wallets by name or address..."
+              placeholder={t('trust_wallet.search_wallets_placeholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none bg-white shadow-sm transition-colors"
@@ -929,7 +929,7 @@ const TrustTabContent: React.FC = () => {
               onChange={(e) => setNetworkFilter(e.target.value)}
               className="w-full pl-12 pr-10 py-3 border border-gray-200 rounded-lg focus:outline-none bg-white shadow-sm transition-colors appearance-none cursor-pointer text-sm font-medium text-gray-700"
             >
-              <option value="all">All Networks</option>
+              <option value="all">{t('trust_wallet.all_networks')}</option>
               {availableNetworks.map(network => (
                 <option key={network} value={network}>{network}</option>
               ))}
@@ -949,7 +949,7 @@ const TrustTabContent: React.FC = () => {
             <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
               <Wallet className="h-4 w-4 text-gray-600" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900">Portfolio Summary</h2>
+            <h2 className="text-lg font-semibold text-gray-900">{t('trust_wallet.portfolio_summary')}</h2>
           </div>
           
           {/* Metrics Grid */}
@@ -965,7 +965,7 @@ const TrustTabContent: React.FC = () => {
                 )}
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Total Balance</p>
+                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">{t('trust_wallet.total_balance')}</p>
                 {totalBalanceSummary.isLoading ? (
                   <div className="h-7 bg-gray-100 rounded animate-pulse w-28"></div>
                 ) : (
@@ -973,7 +973,7 @@ const TrustTabContent: React.FC = () => {
                     ${totalBalanceSummary.totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 )}
-                <p className="text-xs text-gray-500">Across all wallets</p>
+                <p className="text-xs text-gray-500">{t('trust_wallet.across_all_wallets', 'Across all wallets')}</p>
               </div>
             </div>
 
@@ -985,12 +985,12 @@ const TrustTabContent: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Active Wallets</p>
+                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">{t('trust_wallet.active_wallets', 'Active Wallets')}</p>
                 <p className="text-lg font-semibold text-gray-900">
                   {wallets.filter(w => w.is_active).length}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {totalBalanceSummary.loadedWalletsCount} with loaded balances
+                  {totalBalanceSummary.loadedWalletsCount} {t('trust_wallet.with_loaded_balances', 'with loaded balances')}
                 </p>
               </div>
             </div>
@@ -1003,11 +1003,11 @@ const TrustTabContent: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Total Transactions</p>
+                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">{t('trust_wallet.total_transactions')}</p>
                 <p className="text-lg font-semibold text-gray-900">
                   {summary?.overall?.total_transactions?.toLocaleString() || 0}
                 </p>
-                <p className="text-xs text-gray-500">All networks</p>
+                <p className="text-xs text-gray-500">{t('trust_wallet.all_networks')}</p>
               </div>
             </div>
 
@@ -1019,12 +1019,12 @@ const TrustTabContent: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Active Networks</p>
+                <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">{t('trust_wallet.active_networks')}</p>
                 <p className="text-lg font-semibold text-gray-900">
                   {availableNetworks.length}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {availableNetworks.join(', ') || 'None'}
+                  {availableNetworks.join(', ') || t('common.none', 'None')}
                 </p>
               </div>
             </div>
@@ -1071,7 +1071,7 @@ const TrustTabContent: React.FC = () => {
                               <button
                                 onClick={(e) => handleCopyWalletAddress(e, wallet.id, wallet.wallet_address)}
                                 className="opacity-0 group-hover:opacity-100 transition-all duration-200 p-1 hover:bg-gray-100 rounded border border-transparent hover:border-gray-300"
-                                title={copiedWalletId === wallet.id ? 'Address copied!' : 'Copy full address'}
+                                title={copiedWalletId === wallet.id ? t('trust_wallet.address_copied') : t('trust_wallet.copy_full_address')}
                               >
                                 {copiedWalletId === wallet.id ? (
                                   <Check className="h-3.5 w-3.5 text-green-600" />
@@ -1089,7 +1089,7 @@ const TrustTabContent: React.FC = () => {
                           {wallet.is_active && (
                             <UnifiedBadge variant="success" size="sm" className="text-xs font-semibold px-2.5 py-1">
                               <div className="w-2 h-2 bg-green-500 rounded-full mr-1.5 animate-pulse shadow-sm shadow-green-500/50" />
-                              Active
+                              {t('trust_wallet.active')}
                             </UnifiedBadge>
                           )}
                         </div>
@@ -1098,7 +1098,7 @@ const TrustTabContent: React.FC = () => {
                       {/* Total Balance - Prominent Display with better visual hierarchy */}
                       <div className="pt-5 border-t border-gray-300">
                         <div className="flex items-baseline justify-between mb-3">
-                          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Balance</span>
+                          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t('trust_wallet.total_balance')}</span>
                           {balance?.last_updated && (
                             <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-md border border-gray-200">
                               <Clock className="h-3 w-3" />
@@ -1114,7 +1114,7 @@ const TrustTabContent: React.FC = () => {
                         {isLoading ? (
                           <div className="flex items-center gap-3 mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                             <RefreshCw className="h-5 w-5 text-gray-400 animate-spin" />
-                            <span className="text-sm font-medium text-gray-500">Loading balance...</span>
+                            <span className="text-sm font-medium text-gray-500">{t('trust_wallet.loading_balance')}</span>
                           </div>
                         ) : balance && totalUSD > 0 ? (
                           <div className="mt-2">
@@ -1124,26 +1124,26 @@ const TrustTabContent: React.FC = () => {
                             {tokenCount > 0 && (
                               <p className="text-xs font-medium text-gray-500 mt-2 flex items-center gap-1.5">
                                 <DollarSign className="h-3 w-3" />
-                                {tokenCount} asset{tokenCount !== 1 ? 's' : ''}
+                                {tokenCount} {tokenCount !== 1 ? t('trust_wallet.assets') : t('trust_wallet.asset')}
                               </p>
                             )}
                           </div>
                         ) : balance ? (
                           <div className="mt-2">
                             <p className="text-3xl font-bold text-gray-400">$0.00</p>
-                            <p className="text-xs text-gray-500 mt-2">No balance</p>
+                            <p className="text-xs text-gray-500 mt-2">{t('trust_wallet.no_balance')}</p>
                           </div>
                         ) : balance === null ? (
                           <div className="mt-2">
                             <p className="text-sm font-medium text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200 flex items-center gap-2">
                               <AlertCircle className="h-4 w-4" />
-                              Failed to load balance
+                              {t('trust_wallet.failed_load_balance')}
                             </p>
                           </div>
                         ) : (
                           <div className="mt-2">
                             <p className="text-sm font-medium text-gray-500 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                              Sync wallet to see balance
+                              {t('trust_wallet.sync_wallet_see_balance')}
                             </p>
                           </div>
                         )}
@@ -1184,7 +1184,7 @@ const TrustTabContent: React.FC = () => {
                           {tokenCount > 4 && (
                             <div className="mt-4 pt-3 border-t border-gray-200">
                               <p className="text-xs font-semibold text-gray-600 text-center bg-gray-50 py-2 rounded-lg border border-gray-200">
-                                +{tokenCount - 4} more asset{tokenCount - 4 !== 1 ? 's' : ''}
+                                +{tokenCount - 4} more {tokenCount - 4 !== 1 ? t('trust_wallet.assets') : t('trust_wallet.asset')}
                               </p>
                             </div>
                           )}
@@ -1200,10 +1200,10 @@ const TrustTabContent: React.FC = () => {
                           }}
                           disabled={syncingWallets.has(wallet.id)}
                           className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-gray-700 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200 hover:border-blue-300 shadow-sm hover:shadow"
-                          title="Sync wallet transactions"
+                          title={t('trust_wallet.sync_wallet_title')}
                         >
                           <RefreshCw className={`h-4 w-4 ${syncingWallets.has(wallet.id) ? 'animate-spin' : ''}`} />
-                          <span>{syncingWallets.has(wallet.id) ? 'Syncing...' : 'Sync'}</span>
+                          <span>{syncingWallets.has(wallet.id) ? t('trust_wallet.syncing') : t('trust_wallet.sync')}</span>
                         </button>
                         <div className="flex items-center gap-1">
                           <button
@@ -1212,7 +1212,7 @@ const TrustTabContent: React.FC = () => {
                               handleEditWallet(wallet.id);
                             }}
                             className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all border border-transparent hover:border-gray-300"
-                            title="Edit wallet"
+                            title={t('trust_wallet.edit_wallet_title')}
                           >
                             <Edit className="h-4 w-4" />
                           </button>
@@ -1222,7 +1222,7 @@ const TrustTabContent: React.FC = () => {
                               handleViewWallet(wallet.id);
                             }}
                             className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all border border-transparent hover:border-blue-300"
-                            title="View details"
+                            title={t('trust_wallet.view_details_title')}
                           >
                             <Eye className="h-4 w-4" />
                           </button>
@@ -1233,7 +1233,7 @@ const TrustTabContent: React.FC = () => {
                             }}
                             disabled={deletingWallets.has(wallet.id)}
                             className="p-2 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-transparent hover:border-red-300"
-                            title="Delete wallet"
+                            title={t('trust_wallet.delete_wallet_title')}
                           >
                             {deletingWallets.has(wallet.id) ? (
                               <RefreshCw className="h-4 w-4 animate-spin" />
@@ -1255,12 +1255,12 @@ const TrustTabContent: React.FC = () => {
               <Wallet className="h-8 w-8 text-gray-400" />
             </div>
             <h3 className="text-2xl font-bold text-gray-900 mb-3">
-              {wallets.length === 0 ? 'No wallets connected' : 'No wallets found'}
+              {wallets.length === 0 ? t('trust_wallet.no_wallets_connected') : t('trust_wallet.no_wallets_found')}
             </h3>
             <p className="text-gray-600 max-w-md mx-auto text-lg leading-relaxed">
               {wallets.length === 0 
-                ? 'Get started by adding your first wallet to monitor blockchain transactions and balances.' 
-                : 'Try adjusting your search criteria to find the wallets you\'re looking for.'
+                ? t('trust_wallet.get_started_message')
+                : t('trust_wallet.try_adjusting_search')
               }
             </p>
             {wallets.length === 0 && (
@@ -1269,7 +1269,7 @@ const TrustTabContent: React.FC = () => {
                 className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-base font-semibold shadow-sm"
               >
                 <Plus className="h-5 w-5 inline mr-2" />
-                Add Your First Wallet
+                {t('trust_wallet.add_first_wallet')}
               </button>
             )}
           </div>
@@ -1289,7 +1289,7 @@ const TrustTabContent: React.FC = () => {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">Edit Wallet</h2>
+                <h2 className="text-lg font-semibold text-gray-900">{t('trust_wallet.edit_wallet')}</h2>
                 <button
                   onClick={() => {
                     setShowEditModal(false);
@@ -1311,7 +1311,7 @@ const TrustTabContent: React.FC = () => {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Wallet Name
+                    {t('trust_wallet.wallet_name')}
                   </label>
                   <input
                     type="text"
@@ -1319,12 +1319,12 @@ const TrustTabContent: React.FC = () => {
                     defaultValue={editingWallet.wallet_name}
                     required
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none"
-                    placeholder="Enter wallet name"
+                    placeholder={t('trust_wallet.wallet_name')}
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Wallet Address
+                    {t('trust_wallet.wallet_address')}
                   </label>
                   <input
                     type="text"
@@ -1332,11 +1332,11 @@ const TrustTabContent: React.FC = () => {
                     disabled
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Wallet address cannot be changed</p>
+                  <p className="mt-1 text-xs text-gray-500">{t('trust_wallet.address_cannot_changed')}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Network
+                    {t('trust_wallet.network')}
                   </label>
                   <input
                     type="text"
@@ -1354,7 +1354,7 @@ const TrustTabContent: React.FC = () => {
                     className="h-4 w-4 text-blue-600 focus:outline-none border-gray-300 rounded"
                   />
                   <label htmlFor="is_active" className="ml-2 text-sm font-medium text-gray-700">
-                    Active
+                    {t('trust_wallet.active')}
                   </label>
                 </div>
               </div>
@@ -1367,14 +1367,14 @@ const TrustTabContent: React.FC = () => {
                   }}
                   className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   <Save className="h-4 w-4 inline mr-1.5" />
-                  Save Changes
+                  {t('clients_page.save_changes')}
                 </button>
               </div>
             </form>
@@ -1392,7 +1392,7 @@ const TrustTabContent: React.FC = () => {
                   <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
                     <AlertCircle className="h-5 w-5 text-red-600" />
                   </div>
-                  <h2 className="text-lg font-semibold text-gray-900">Delete Wallet</h2>
+                  <h2 className="text-lg font-semibold text-gray-900">{t('trust_wallet.delete_wallet')}</h2>
                 </div>
                 <button
                   onClick={() => {
@@ -1409,24 +1409,24 @@ const TrustTabContent: React.FC = () => {
             <div className="p-6 space-y-4">
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-800">
-                  You are about to delete the wallet: <span className="font-semibold">{wallets.find(w => w.id === deletingWalletId)?.wallet_name}</span>
+                  {t('trust_wallet.about_to_delete_wallet', { name: wallets.find(w => w.id === deletingWalletId)?.wallet_name || '' })}
                 </p>
                 <p className="text-sm text-red-700 mt-2">
-                  This action cannot be undone. All transaction history will be permanently deleted.
+                  {t('trust_wallet.delete_wallet_warning')}
                 </p>
               </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Security Code
+                  {t('trust_wallet.security_code')}
                 </label>
-                <p className="text-xs text-gray-500 mb-2">Enter security code to confirm deletion</p>
+                <p className="text-xs text-gray-500 mb-2">{t('trust_wallet.enter_security_code_delete')}</p>
                 <input
                   type="text"
                   value={deleteSecurityCode}
                   onChange={(e) => setDeleteSecurityCode(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 text-center font-mono text-lg tracking-wider"
-                  placeholder="Enter code"
+                  placeholder={t('trust_wallet.enter_code')}
                   autoFocus
                   maxLength={4}
                 />
@@ -1442,7 +1442,7 @@ const TrustTabContent: React.FC = () => {
                 }}
                 className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={confirmDeleteWallet}
@@ -1452,12 +1452,12 @@ const TrustTabContent: React.FC = () => {
                 {deletingWallets.has(deletingWalletId) ? (
                   <>
                     <RefreshCw className="h-4 w-4 inline mr-1.5 animate-spin" />
-                    Deleting...
+                    {t('trust_wallet.deleting_wallet')}
                   </>
                 ) : (
                   <>
                     <Trash2 className="h-4 w-4 inline mr-1.5" />
-                    Delete Wallet
+                    {t('trust_wallet.delete_wallet_button')}
                   </>
                 )}
               </button>
@@ -1487,7 +1487,7 @@ const TrustTabContent: React.FC = () => {
                     </span>
                     {selectedWallet.is_active && (
                   <span className="text-xs font-medium text-gray-700 bg-gray-50 px-2.5 py-1 rounded border border-gray-200">
-                        Active
+                        {t('trust_wallet.active')}
                       </span>
                     )}
                 <button
@@ -1512,7 +1512,7 @@ const TrustTabContent: React.FC = () => {
                 }`}
               >
                 <Activity className="h-4 w-4 inline mr-2" />
-                Transactions
+                {t('trust_wallet.transactions_tab')}
               </button>
               <button
                 onClick={() => {
@@ -1532,7 +1532,7 @@ const TrustTabContent: React.FC = () => {
                 }`}
               >
                 <History className="h-4 w-4 inline mr-2" />
-                Historical Balances
+                {t('trust_wallet.historical_balances')}
               </button>
             </div>
 
@@ -1546,7 +1546,7 @@ const TrustTabContent: React.FC = () => {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Search transactions..."
+                        placeholder={t('trust_wallet.search_transactions')}
                         value={modalSearchTerm}
                         onChange={(e) => setModalSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none bg-white text-sm"
@@ -1561,7 +1561,7 @@ const TrustTabContent: React.FC = () => {
                       } border border-gray-200`}
                     >
                       <Filter className="h-4 w-4 inline mr-1.5" />
-                      Filters
+                      {t('trust_wallet.filters')}
                     </button>
                     <button
                       onClick={() => setModalGroupByDay(!modalGroupByDay)}
@@ -1570,14 +1570,14 @@ const TrustTabContent: React.FC = () => {
                       } border border-gray-200`}
                     >
                       <Layers className="h-4 w-4 inline mr-1.5" />
-                      {modalGroupByDay ? 'Ungroup' : 'Group'}
+                      {modalGroupByDay ? t('trust_wallet.ungroup') : t('trust_wallet.group')}
                     </button>
                     <button
                       onClick={handleExportCSV}
                       className="px-4 py-2 bg-white text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 border border-gray-200 transition-colors"
                     >
                       <Download className="h-4 w-4 inline mr-1.5" />
-                      Export
+                      {t('trust_wallet.export')}
                     </button>
                     <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1">
                       <button
@@ -1604,55 +1604,55 @@ const TrustTabContent: React.FC = () => {
                 {showFilters && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 pt-4 border-t border-gray-200">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-2">Type</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">{t('trust_wallet.type')}</label>
                     <select
                       value={modalTypeFilter}
                       onChange={(e) => setModalTypeFilter(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none"
                     >
-                      <option value="all">All</option>
-                      <option value="IN">Inbound</option>
-                      <option value="OUT">Outbound</option>
-                      <option value="INTERNAL">Internal</option>
+                      <option value="all">{t('trust_wallet.all')}</option>
+                      <option value="IN">{t('trust_wallet.inbound')}</option>
+                      <option value="OUT">{t('trust_wallet.outbound')}</option>
+                      <option value="INTERNAL">{t('trust_wallet.internal')}</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-2">Token</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">{t('trust_wallet.token')}</label>
                     <select
                       value={modalTokenFilter}
                       onChange={(e) => setModalTokenFilter(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none"
                     >
-                      <option value="all">All</option>
+                      <option value="all">{t('trust_wallet.all')}</option>
                       {uniqueTokens.map(token => (
                         <option key={token} value={token}>{token}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">{t('trust_wallet.status')}</label>
                     <select
                       value={modalStatusFilter}
                       onChange={(e) => setModalStatusFilter(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none"
                     >
-                      <option value="all">All</option>
-                      <option value="CONFIRMED">Confirmed</option>
-                      <option value="PENDING">Pending</option>
-                      <option value="FAILED">Failed</option>
+                      <option value="all">{t('trust_wallet.all')}</option>
+                      <option value="CONFIRMED">{t('trust_wallet.confirmed')}</option>
+                      <option value="PENDING">{t('trust_wallet.pending')}</option>
+                      <option value="FAILED">{t('trust_wallet.failed')}</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-2">Sort By</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">{t('trust_wallet.sort_by')}</label>
                     <div className="flex gap-2">
                       <select
                         value={modalSortBy}
                         onChange={(e) => setModalSortBy(e.target.value as 'date' | 'amount' | 'gas')}
                         className="flex-1 px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none"
                       >
-                        <option value="date">Date</option>
-                        <option value="amount">Amount</option>
-                        <option value="gas">Gas Fee</option>
+                        <option value="date">{t('trust_wallet.date')}</option>
+                        <option value="amount">{t('trust_wallet.amount')}</option>
+                        <option value="gas">{t('trust_wallet.gas_fee')}</option>
                       </select>
                       <button
                         onClick={() => setModalSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
@@ -1679,14 +1679,14 @@ const TrustTabContent: React.FC = () => {
                       <div>
                         <p className="text-sm font-medium text-blue-900">
                           {historicalStartDate || historicalEndDate 
-                            ? 'Showing filtered historical balances'
-                            : 'Showing complete wallet history'
+                            ? t('trust_wallet.showing_filtered_balances')
+                            : t('trust_wallet.showing_complete_history')
                           }
                         </p>
                         <p className="text-xs text-blue-700 mt-1">
                           {historicalStartDate || historicalEndDate
-                            ? `Date range: ${historicalStartDate || 'Wallet birth'} to ${historicalEndDate || 'Today'}`
-                            : 'Displaying all balances from wallet creation to today. Use date filters to narrow results.'
+                            ? t('trust_wallet.date_range', { start: historicalStartDate || t('trust_wallet.wallet_birth'), end: historicalEndDate || t('trust_wallet.today') })
+                            : t('trust_wallet.displaying_all_balances')
                           }
                         </p>
                       </div>
@@ -1697,7 +1697,7 @@ const TrustTabContent: React.FC = () => {
                   <div className="mb-6 flex flex-col md:flex-row gap-4 items-end">
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-gray-700 mb-2">
-                        Start Date <span className="text-gray-500 font-normal">(Optional - defaults to wallet birth)</span>
+                        {t('trust_wallet.start_date_optional')}
                       </label>
                       <input
                         type="date"
@@ -1708,7 +1708,7 @@ const TrustTabContent: React.FC = () => {
                     </div>
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-gray-700 mb-2">
-                        End Date <span className="text-gray-500 font-normal">(Optional - defaults to today)</span>
+                        {t('trust_wallet.end_date_optional')}
                       </label>
                       <input
                         type="date"
@@ -1723,7 +1723,7 @@ const TrustTabContent: React.FC = () => {
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
                     >
                       <RefreshCw className={`h-4 w-4 inline mr-2 ${historicalBalancesLoading ? 'animate-spin' : ''}`} />
-                      {historicalBalancesLoading ? 'Loading...' : 'Refresh'}
+                      {historicalBalancesLoading ? t('trust_wallet.loading') : t('trust_wallet.refresh_balances')}
                     </button>
                     <button
                       onClick={handleExportHistoricalBalancesExcel}
@@ -1731,7 +1731,7 @@ const TrustTabContent: React.FC = () => {
                       className="px-4 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 border border-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Download className="h-4 w-4 inline mr-2" />
-                      Export Excel
+                      {t('trust_wallet.export_excel')}
                     </button>
                   </div>
 
@@ -1742,7 +1742,7 @@ const TrustTabContent: React.FC = () => {
                         <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                           <RefreshCw className="h-6 w-6 animate-spin text-gray-600" />
                         </div>
-                        <span className="text-lg font-medium text-gray-600">Loading historical balances...</span>
+                        <span className="text-lg font-medium text-gray-600">{t('trust_wallet.loading_historical_balances')}</span>
                       </div>
                     </div>
                   ) : historicalBalances.length > 0 ? (
@@ -1750,8 +1750,8 @@ const TrustTabContent: React.FC = () => {
                       <table className="w-full border-collapse">
                         <thead>
                           <tr className="bg-gray-50 border-b border-gray-200">
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
-                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">Total USD</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">{t('trust_wallet.date')}</th>
+                            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">{t('trust_wallet.total_usd')}</th>
                             {(() => {
                               const allTokens = new Set<string>();
                               historicalBalances.forEach(day => {
@@ -1759,8 +1759,8 @@ const TrustTabContent: React.FC = () => {
                               });
                               return Array.from(allTokens).sort().map(token => (
                                 <React.Fragment key={token}>
-                                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">{token} Amount</th>
-                                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">{token} USD</th>
+                                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">{t('trust_wallet.amount_header', { token })}</th>
+                                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">{t('trust_wallet.usd_header', { token })}</th>
                                 </React.Fragment>
                               ));
                             })()}
@@ -1806,9 +1806,9 @@ const TrustTabContent: React.FC = () => {
                       <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                         <History className="h-6 w-6 text-gray-400" />
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">No historical balances found</h3>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('trust_wallet.no_historical_balances')}</h3>
                       <p className="text-sm text-gray-600">
-                        Select a date range and click "Load" to view historical balances.
+                        {t('trust_wallet.select_date_range_load')}
                       </p>
                     </div>
                   )}
@@ -1822,7 +1822,7 @@ const TrustTabContent: React.FC = () => {
                     <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                       <RefreshCw className="h-6 w-6 animate-spin text-gray-600" />
                     </div>
-                    <span className="text-lg font-medium text-gray-600">Loading transactions...</span>
+                    <span className="text-lg font-medium text-gray-600">{t('trust_wallet.loading_transactions')}</span>
                   </div>
                 </div>
               ) : filteredAndSortedTransactions.length > 0 ? (
@@ -1845,10 +1845,10 @@ const TrustTabContent: React.FC = () => {
                       <div className="flex items-center justify-between">
                               <div>
                                 <h3 className="text-base font-semibold text-gray-900">{new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</h3>
-                                <p className="text-xs text-gray-500 mt-0.5">{transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{transactions.length} {transactions.length !== 1 ? t('trust_wallet.transactions') : t('trust_wallet.transaction')}</p>
                               </div>
                               <div className="text-right">
-                                <div className="text-xs text-gray-500 uppercase tracking-wide">Net Flow</div>
+                                <div className="text-xs text-gray-500 uppercase tracking-wide">{t('trust_wallet.net_flow')}</div>
                                 <div className={`text-base font-semibold ${dayTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                   {dayTotal.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                                 </div>
@@ -1913,11 +1913,11 @@ const TrustTabContent: React.FC = () => {
                             {!isCompact && (
                               <div className="mt-3 grid grid-cols-2 gap-3">
                                 <div>
-                                  <span className="text-xs font-semibold text-gray-700 block mb-1">From:</span>
+                                  <span className="text-xs font-semibold text-gray-700 block mb-1">{t('trust_wallet.from')}</span>
                                   <div className="font-mono text-xs text-gray-600 bg-gray-50 px-2 py-1.5 rounded break-all">{transaction.from_address}</div>
                         </div>
                                 <div>
-                                  <span className="text-xs font-semibold text-gray-700 block mb-1">To:</span>
+                                  <span className="text-xs font-semibold text-gray-700 block mb-1">{t('trust_wallet.to')}</span>
                                   <div className="font-mono text-xs text-gray-600 bg-gray-50 px-2 py-1.5 rounded break-all">{transaction.to_address}</div>
                             </div>
                             </div>
@@ -1929,7 +1929,7 @@ const TrustTabContent: React.FC = () => {
                         <div className="flex items-start gap-2 flex-shrink-0">
                           {!isCompact && transaction.gas_fee && transaction.gas_fee > 0 && (
                             <div className="text-right mr-4">
-                              <div className="text-xs font-semibold text-gray-700 mb-1">Gas</div>
+                              <div className="text-xs font-semibold text-gray-700 mb-1">{t('trust_wallet.gas')}</div>
                               <div className="text-sm font-medium text-gray-900">
                                 {transaction.gas_fee} {transaction.gas_fee_token}
                               </div>
@@ -1939,7 +1939,7 @@ const TrustTabContent: React.FC = () => {
                             <button
                               onClick={() => handleCopyToClipboard(transaction.transaction_hash)}
                               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="Copy hash"
+                              title={t('trust_wallet.copy_hash')}
                             >
                               <Copy className="h-4 w-4 text-gray-500" />
                             </button>
@@ -1949,7 +1949,7 @@ const TrustTabContent: React.FC = () => {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="View on block explorer"
+                                title={t('trust_wallet.view_on_explorer')}
                               >
                                 <ExternalLink className="h-4 w-4 text-gray-500" />
                               </a>
@@ -2046,7 +2046,7 @@ const TrustTabContent: React.FC = () => {
                         <div className="flex items-start gap-2 flex-shrink-0">
                           {!isCompact && transaction.gas_fee && transaction.gas_fee > 0 && (
                             <div className="text-right mr-4">
-                              <div className="text-xs font-semibold text-gray-700 mb-1">Gas</div>
+                              <div className="text-xs font-semibold text-gray-700 mb-1">{t('trust_wallet.gas')}</div>
                               <div className="text-sm font-medium text-gray-900">
                               {transaction.gas_fee} {transaction.gas_fee_token}
                               </div>
@@ -2056,7 +2056,7 @@ const TrustTabContent: React.FC = () => {
                             <button
                               onClick={() => handleCopyToClipboard(transaction.transaction_hash)}
                               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="Copy hash"
+                              title={t('trust_wallet.copy_hash')}
                             >
                               <Copy className="h-4 w-4 text-gray-500" />
                             </button>
@@ -2066,7 +2066,7 @@ const TrustTabContent: React.FC = () => {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="View on block explorer"
+                                title={t('trust_wallet.view_on_explorer')}
                               >
                                 <ExternalLink className="h-4 w-4 text-gray-500" />
                               </a>
@@ -2084,11 +2084,11 @@ const TrustTabContent: React.FC = () => {
                     <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                       <Wallet className="h-6 w-6 text-gray-400" />
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No transactions found</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('trust_wallet.no_transactions_found')}</h3>
                     <p className="text-sm text-gray-600">
                       {walletTransactions.length === 0 
-                        ? "This wallet doesn't have any transactions yet."
-                        : "No transactions match your filters. Try adjusting your search or filters."}
+                        ? t('trust_wallet.no_transactions_yet')
+                        : t('trust_wallet.no_transactions_match_filters')}
                     </p>
                   </div>
               )}
@@ -2097,7 +2097,7 @@ const TrustTabContent: React.FC = () => {
               {filteredAndSortedTransactions.length > 0 && paginatedTransactions.totalPages > 1 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-6 bg-white border-t border-gray-200">
                   <div className="flex items-center gap-2">
-                    <label className="text-xs sm:text-sm text-gray-600">Per page:</label>
+                    <label className="text-xs sm:text-sm text-gray-600">{t('trust_wallet.per_page')}</label>
                     <select 
                       value={transactionsPerPage} 
                       onChange={(e) => {
@@ -2119,17 +2119,17 @@ const TrustTabContent: React.FC = () => {
                       disabled={currentPage === 1}
                       className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm font-medium"
                     >
-                      Prev
+                      {t('trust_wallet.prev')}
                     </button>
                     <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
-                      Page {currentPage} of {paginatedTransactions.totalPages}
+                      {t('trust_wallet.page_of', { current: currentPage, total: paginatedTransactions.totalPages })}
                     </div>
                     <button
                       onClick={() => setCurrentPage(prev => Math.min(paginatedTransactions.totalPages, prev + 1))}
                       disabled={currentPage === paginatedTransactions.totalPages}
                       className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm font-medium"
                     >
-                      Next
+                      {t('trust_wallet.next')}
                     </button>
                   </div>
                           </div>

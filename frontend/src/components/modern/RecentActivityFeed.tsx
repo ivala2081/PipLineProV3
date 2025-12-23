@@ -5,6 +5,8 @@ import { Activity, TrendingUp, TrendingDown, Clock, ArrowRight, RefreshCw } from
 import { useLanguage } from '../../contexts/LanguageContext';
 import { StatusIndicator } from '../ui/StatusIndicator';
 import { api } from '../../utils/apiClient';
+import Modal from '../Modal';
+import TransactionDetailView from '../TransactionDetailView';
 
 interface RecentTransaction {
   id: number;
@@ -15,11 +17,22 @@ interface RecentTransaction {
   date: string;
   created_at: string;
   psp?: string;
+  company?: string;
+  iban?: string;
+  payment_method?: string;
+  notes?: string;
+  commission?: number;
+  net_amount?: number;
+  amount_tl?: number;
+  commission_tl?: number;
+  net_amount_tl?: number;
+  exchange_rate?: number;
+  updated_at?: string;
 }
 
 interface RecentActivityFeedProps {
   limit?: number;
-  onClickTransaction?: (transactionId: number) => void;
+  onClickTransaction?: (transactionId: number, transaction?: RecentTransaction) => void;
 }
 
 export const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({ 
@@ -32,6 +45,9 @@ export const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<RecentTransaction | null>(null);
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [loadingTransactionDetails, setLoadingTransactionDetails] = useState(false);
 
   // useCallback ile fetch fonksiyonunu optimize et
   const fetchRecentTransactions = useCallback(async (forceRefresh = false) => {
@@ -145,14 +161,56 @@ export const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
     }
   }, []);
 
-  // useCallback ile handleTransactionClick'i optimize et
-  const handleTransactionClick = useCallback((transactionId: number) => {
-    if (onClickTransaction) {
-      onClickTransaction(transactionId);
-    } else {
-      navigate(`/transactions?highlight=${transactionId}`);
+  // Fetch full transaction details
+  const fetchTransactionDetails = useCallback(async (transactionId: number) => {
+    setLoadingTransactionDetails(true);
+    try {
+      const response = await api.get(`/api/transaction/${transactionId}`);
+      if (response.ok) {
+        const data = await api.parseResponse(response);
+        // Map API response to match TransactionDetailView interface
+        const mappedTransaction: RecentTransaction = {
+          id: data.id,
+          client_name: data.client_name,
+          company: data.company_order || data.company, // Map company_order to company
+          iban: data.iban,
+          payment_method: data.payment_method,
+          category: data.category,
+          amount: data.amount,
+          commission: data.commission,
+          net_amount: data.net_amount,
+          currency: data.currency,
+          psp: data.psp,
+          notes: data.notes,
+          date: data.date,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+          amount_tl: data.amount_tl,
+          commission_tl: data.commission_tl,
+          net_amount_tl: data.net_amount_tl,
+          exchange_rate: data.exchange_rate,
+        };
+        setSelectedTransaction(mappedTransaction);
+        setShowTransactionModal(true);
+      } else {
+        console.error('Failed to fetch transaction details');
+      }
+    } catch (err) {
+      console.error('Error fetching transaction details:', err);
+    } finally {
+      setLoadingTransactionDetails(false);
     }
-  }, [onClickTransaction, navigate]);
+  }, []);
+
+  // useCallback ile handleTransactionClick'i optimize et
+  const handleTransactionClick = useCallback((transaction: RecentTransaction) => {
+    if (onClickTransaction) {
+      onClickTransaction(transaction.id, transaction);
+    } else {
+      // Show client information modal (same as Transactions table in Clients section)
+      fetchTransactionDetails(transaction.id);
+    }
+  }, [onClickTransaction, fetchTransactionDetails]);
 
   // useCallback ile handleViewAll'i optimize et
   // Clients sayfasına, transactions tab'ına yönlendir
@@ -252,7 +310,7 @@ export const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
                 return (
                   <div
                     key={transaction.id}
-                    onClick={() => handleTransactionClick(transaction.id)}
+                    onClick={() => handleTransactionClick(transaction)}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-gray-100 hover:border-gray-200 cursor-pointer transition-all duration-200 group/item"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -301,6 +359,27 @@ export const RecentActivityFeed: React.FC<RecentActivityFeedProps> = ({
           </>
         )}
       </CardContent>
+
+      {/* Transaction Detail Modal */}
+      {showTransactionModal && selectedTransaction && (
+        <Modal
+          isOpen={showTransactionModal}
+          onClose={() => {
+            setShowTransactionModal(false);
+            setSelectedTransaction(null);
+          }}
+          title={t('transactions.view_transaction') || 'Transaction Details'}
+          size="lg"
+        >
+          {loadingTransactionDetails ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+          ) : (
+            <TransactionDetailView transaction={selectedTransaction as any} />
+          )}
+        </Modal>
+      )}
     </Card>
   );
 };
