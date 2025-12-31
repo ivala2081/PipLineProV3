@@ -116,7 +116,7 @@ class TranslationLog(db.Model):
     key_path = db.Column(db.String(255), nullable=True)
     source_language = db.Column(db.String(10), nullable=True)
     target_language = db.Column(db.String(10), nullable=True)
-    user_id = db.Column(db.Integer, ForeignKey('user.id'), nullable=True)
+    user_id = db.Column(db.Integer, ForeignKey('users.id'), nullable=True)
     details = db.Column(db.JSON, nullable=True)  # Additional operation details
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     

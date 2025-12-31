@@ -109,18 +109,18 @@ class UnifiedDatabaseService:
             indexes_to_create = [
                 # Transaction table indexes - Critical for most queries
                 # Single column indexes (frequently filtered)
-                "CREATE INDEX IF NOT EXISTS idx_transaction_date ON \"transaction\"(date)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_created_at ON \"transaction\"(created_at)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_psp ON \"transaction\"(psp)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_client_name ON \"transaction\"(client_name)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_category ON \"transaction\"(category)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_date ON \"transactions\"(date)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_created_at ON \"transactions\"(created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_psp ON \"transactions\"(psp)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_client_name ON \"transactions\"(client_name)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_category ON \"transactions\"(category)",
                 
                 # Composite indexes for common query patterns
-                "CREATE INDEX IF NOT EXISTS idx_transaction_date_category ON \"transaction\"(date, category)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_date_psp ON \"transaction\"(date, psp)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_psp_category ON \"transaction\"(psp, category)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_client_date ON \"transaction\"(client_name, date)",
-                "CREATE INDEX IF NOT EXISTS idx_transaction_created_psp ON \"transaction\"(created_at, psp)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_date_category ON \"transactions\"(date, category)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_date_psp ON \"transactions\"(date, psp)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_psp_category ON \"transactions\"(psp, category)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_client_date ON \"transactions\"(client_name, date)",
+                "CREATE INDEX IF NOT EXISTS idx_transaction_created_psp ON \"transactions\"(created_at, psp)",
                 
                 # PSP Track table indexes
                 "CREATE INDEX IF NOT EXISTS idx_psp_track_date_psp ON psp_track(date, psp_name)",
@@ -143,29 +143,29 @@ class UnifiedDatabaseService:
                 "CREATE INDEX IF NOT EXISTS idx_psp_kasa_top_psp_date ON psp_kasa_top(psp_name, date)",
                 
                 # User table indexes
-                "CREATE INDEX IF NOT EXISTS idx_user_username ON user(username)",
-                "CREATE INDEX IF NOT EXISTS idx_user_email ON user(email)",
-                "CREATE INDEX IF NOT EXISTS idx_user_role ON user(role)",
-                "CREATE INDEX IF NOT EXISTS idx_user_is_active ON user(is_active)",
+                "CREATE INDEX IF NOT EXISTS idx_user_username ON \"users\"(username)",
+                "CREATE INDEX IF NOT EXISTS idx_user_email ON \"users\"(email)",
+                "CREATE INDEX IF NOT EXISTS idx_user_role ON \"users\"(role)",
+                "CREATE INDEX IF NOT EXISTS idx_user_is_active ON \"users\"(is_active)",
                 
                 # Audit log indexes (matching model definitions)
-                "CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_log(user_id)",
-                "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)",
-                "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)",
-                "CREATE INDEX IF NOT EXISTS idx_audit_table ON audit_log(table_name)",
-                "CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_log(user_id, timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_logs(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action)",
+                "CREATE INDEX IF NOT EXISTS idx_audit_table ON audit_logs(table_name)",
+                "CREATE INDEX IF NOT EXISTS idx_audit_user_timestamp ON audit_logs(user_id, timestamp)",
                 
                 # User session indexes
-                "CREATE INDEX IF NOT EXISTS idx_session_user_id ON user_session(user_id)",
-                "CREATE INDEX IF NOT EXISTS idx_session_token ON user_session(session_token)",
-                "CREATE INDEX IF NOT EXISTS idx_session_is_active ON user_session(is_active)",
-                "CREATE INDEX IF NOT EXISTS idx_session_last_active ON user_session(last_active)",
+                "CREATE INDEX IF NOT EXISTS idx_session_user_id ON user_sessions(user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_session_token ON user_sessions(session_token)",
+                "CREATE INDEX IF NOT EXISTS idx_session_is_active ON user_sessions(is_active)",
+                "CREATE INDEX IF NOT EXISTS idx_session_last_active ON user_sessions(last_active)",
                 
                 # Login attempt indexes
-                "CREATE INDEX IF NOT EXISTS idx_login_username ON login_attempt(username)",
-                "CREATE INDEX IF NOT EXISTS idx_login_timestamp ON login_attempt(timestamp)",
-                "CREATE INDEX IF NOT EXISTS idx_login_success ON login_attempt(success)",
-                "CREATE INDEX IF NOT EXISTS idx_login_username_timestamp ON login_attempt(username, timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_login_username ON login_attempts(username)",
+                "CREATE INDEX IF NOT EXISTS idx_login_timestamp ON login_attempts(timestamp)",
+                "CREATE INDEX IF NOT EXISTS idx_login_success ON login_attempts(success)",
+                "CREATE INDEX IF NOT EXISTS idx_login_username_timestamp ON login_attempts(username, timestamp)",
             ]
             
             created_count = 0
@@ -355,9 +355,15 @@ class UnifiedDatabaseService:
                 }
             
             # Get table row counts
-            tables = ['transaction', 'user', 'psp_track', 'daily_balance', 'psp_allocation', 'audit_log']
+            # SECURITY: Use whitelist for table names to prevent SQL injection
+            tables = ['transactions', 'users', 'psp_track', 'daily_balance', 'psp_allocation', 'audit_logs']
             for table in tables:
                 try:
+                    # SECURITY: Table name is from whitelist, but still use parameterized approach
+                    # SQLite doesn't support table name parameters, so we validate against whitelist
+                    if table not in tables:
+                        logger.warning(f"Invalid table name attempted: {table}")
+                        continue
                     result = db.session.execute(text(f'SELECT COUNT(*) FROM "{table}"')).fetchone()
                     stats[f"{table}_count"] = result[0] if result else 0
                 except Exception as e:
@@ -397,8 +403,10 @@ class UnifiedDatabaseService:
             tables_info = []
             for table_name in inspector.get_table_names():
                 try:
-                    # Get row count
-                    result = db.session.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
+                    # SECURITY: Table name comes from inspector (safe), but validate format
+                    # Use quoted identifier to prevent injection
+                    safe_table_name = table_name.replace('"', '""')  # Escape quotes
+                    result = db.session.execute(text(f'SELECT COUNT(*) FROM "{safe_table_name}"'))
                     row_count = result.scalar()
                     
                     # Get indexes

@@ -125,13 +125,17 @@ def login():
     """Handle user login"""
     # For GET requests, serve React frontend
     if request.method == 'GET':
+        from app.utils.frontend_helper import get_frontend_dist_path
         from flask import send_from_directory
-        frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'frontend', 'dist')
-        if not os.path.exists(frontend_dist):
-            frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'frontend', 'dist_prod')
+        frontend_dist = get_frontend_dist_path()
         index_path = os.path.join(frontend_dist, 'index.html')
         if os.path.exists(index_path):
-            return send_from_directory(frontend_dist, 'index.html')
+            response = send_from_directory(frontend_dist, 'index.html')
+            response.headers['Content-Type'] = 'text/html; charset=utf-8'
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
     
     # Clear any existing flash messages to prevent conflicts
     if current_user.is_authenticated:

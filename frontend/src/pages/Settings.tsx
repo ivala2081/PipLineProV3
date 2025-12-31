@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTabPersistence } from '../hooks/useTabPersistence';
 
@@ -82,7 +82,7 @@ interface FieldType {
   isProtected?: boolean;
 }
 
-export default function Settings() {
+const Settings = React.memo(function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [activeTab, handleTabChange] = useTabPersistence<'general' | 'dropdowns' | 'departments' | 'notifications' | 'integrations' | 'translations'>('general');
@@ -719,7 +719,7 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="p-6">
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
                   <label className="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wide">
                     {t('settings.company_name')}
@@ -776,7 +776,7 @@ export default function Settings() {
               </div>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
                   <label className="block text-xs font-medium text-gray-600 mb-2 uppercase tracking-wide">
                     {t('settings.timezone')}
@@ -879,7 +879,7 @@ export default function Settings() {
           </Card>
 
           {/* Statistics Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="border border-gray-200">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -947,13 +947,7 @@ export default function Settings() {
 
           {/* Main Content */}
           {loadingOptions ? (
-            <Card className="p-8 border border-gray-200">
-              <CardContent className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-600 mx-auto mb-4"></div>
-                <p className="text-gray-700 font-medium">{t('settings.loading_configuration_data')}</p>
-                <p className="text-sm text-gray-500 mt-1">{t('settings.please_wait_retrieve_settings')}</p>
-              </CardContent>
-            </Card>
+            <LoadingState message={t('settings.loading_configuration_data') || 'Loading configuration data...'} />
           ) : (
             <Card className="border border-gray-200 overflow-hidden">
               {/* Table Header */}
@@ -1038,7 +1032,7 @@ export default function Settings() {
                       {fieldType.isStatic ? (
                         /* Static fields - show fixed values */
                         <div className='bg-gray-50 rounded-lg p-4'>
-                          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
+                          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
                             {fieldType.staticValues?.map((value, index) => (
                               <div
                                 key={index}
@@ -1069,7 +1063,7 @@ export default function Settings() {
                       ) : dropdownOptions[fieldType.value]?.length > 0 ? (
                         /* Dynamic fields - show manageable options */
                         <div className='bg-gray-50 rounded-lg p-4'>
-                          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
+                          <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
                             {dropdownOptions[fieldType.value].map(option => (
                               <div
                                 key={option.id}
@@ -1201,7 +1195,7 @@ export default function Settings() {
           </UnifiedCard>
 
           {/* Statistics Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <UnifiedCard variant="outlined" className="relative overflow-hidden">
               <div className="absolute top-0 right-0 w-16 h-16 bg-gray-100 rounded-full -translate-y-8 translate-x-8"></div>
               <CardContent className="p-4">
@@ -1256,13 +1250,7 @@ export default function Settings() {
 
           {/* Main Content */}
           {loadingDepartments ? (
-            <UnifiedCard variant="outlined" className="p-8">
-              <CardContent className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600 mx-auto mb-4"></div>
-                <p className="text-gray-600 font-medium">{t('settings.loading_organizational_structure')}</p>
-                <p className="text-sm text-gray-500 mt-1">{t('settings.please_wait_retrieve_department_config')}</p>
-              </CardContent>
-            </UnifiedCard>
+            <LoadingState message={t('settings.loading_organizational_structure') || 'Loading organizational structure...'} />
           ) : (
             <UnifiedCard variant="outlined" className="overflow-hidden">
               {/* Table Header */}
@@ -1747,7 +1735,7 @@ export default function Settings() {
 
       {/* Tab Navigation */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm">
+        <TabsList className="grid w-full grid-cols-5 bg-gray-50/80 border border-gray-200/60 rounded-lg shadow-sm p-[2px] overflow-hidden">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             {t('tabs.general')}
@@ -2133,4 +2121,6 @@ export default function Settings() {
       </div>
     </EnhancedErrorBoundary>
   );
-}
+});
+
+export default Settings;

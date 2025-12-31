@@ -52,7 +52,8 @@
     "try_again": "Tekrar Dene",
     "copied": "Kopyalandı",
     "na": "Yok",
-    "none": "Yok"
+    "none": "Yok",
+    "validating": "Doğrulanıyor..."
   },
   "navigation": {
     "dashboard": "Gösterge Paneli",
@@ -879,7 +880,7 @@
         "endpoint_not_found": "API endpoint bulunamadı. Lütfen bağlantınızı kontrol edin.",
         "server_error": "Sunucu hatası. Lütfen birkaç dakika sonra tekrar deneyin.",
         "access_denied": "Erişim reddedildi. Lütfen izinlerinizi kontrol edin.",
-        "dropdown_load_failed": "Açılır liste seçenekleri API'den yüklenemedi, varsayılan değerler kullanılıyor."
+        "dropdown_load_failed": "⚠️ Varsayılan açılır liste değerleri kullanılıyor. Bazı özel seçenekler (PSP, Şirket) mevcut olmayabilir. Form hala çalışıyor."
       }
     }
   },
@@ -1104,6 +1105,10 @@
     "security_pin_hint": "Bu giderde değişiklikleri kaydetmek için güvenlik PIN'i girin",
     "enter_security_pin": "Bu gideri düzenlemek için güvenlik PIN'ini girin",
     "invalid_security_pin": "Geçersiz güvenlik PIN'i. Lütfen tekrar deneyin.",
+    "security_verification": "Güvenlik Doğrulaması",
+    "enter_pin_to_continue": "Devam etmek için 4 haneli PIN'inizi girin",
+    "security_pin": "Güvenlik PIN'i",
+    "pin_must_be_4_digits": "PIN 4 haneli olmalıdır",
     "all_expenses": "Tüm Giderler",
     "daily_summary": "Günlük Özet",
     "daily_expenses": "Günlük Giderler",

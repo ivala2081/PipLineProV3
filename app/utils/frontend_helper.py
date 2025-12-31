@@ -9,7 +9,10 @@ from flask import send_from_directory, redirect
 def get_frontend_dist_path():
     """Get the path to the frontend dist directory"""
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    frontend_dist = os.path.join(base_dir, 'frontend', 'dist')
+    # Check dist_new first (current build output), then dist, then dist_prod
+    frontend_dist = os.path.join(base_dir, 'frontend', 'dist_new')
+    if not os.path.exists(frontend_dist):
+        frontend_dist = os.path.join(base_dir, 'frontend', 'dist')
     if not os.path.exists(frontend_dist):
         frontend_dist = os.path.join(base_dir, 'frontend', 'dist_prod')
     return frontend_dist

@@ -195,9 +195,11 @@ class PspOptionsService:
                 
                 if not existing_option:
                     # Create new PSP option with default commission rate
+                    import uuid
                     commission_rate = PspOptionsService.get_psp_commission_rate(psp)
                     
                     new_option = Option(
+                        id=str(uuid.uuid4()),
                         field_name='psp',
                         value=psp,
                         commission_rate=commission_rate,

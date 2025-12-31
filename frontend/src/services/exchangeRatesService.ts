@@ -70,50 +70,40 @@ export interface MissingRatesRequest {
   currency_pairs: string[];
 }
 
+import { ApiClient } from '../utils/apiClient';
+
 class ExchangeRatesService {
-  private baseUrl: string;
+  private apiClient: ApiClient;
 
   constructor() {
-    // In development, use relative URLs to go through Vite proxy
-    // In production, use the configured API base URL
-    const isDev = import.meta.env.DEV;
-    this.baseUrl = isDev ? '' : (import.meta.env.VITE_API_BASE_URL || '');
+    // ARCHITECTURE: Use ApiClient for consistent error handling and retry logic
+    this.apiClient = new ApiClient('/api/v1');
   }
 
   private async makeRequest<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    // Use relative URL if baseUrl is empty (goes through Vite proxy)
-    // Otherwise use full URL
-    const url = this.baseUrl ? `${this.baseUrl}${endpoint}` : endpoint;
-    
-    const defaultOptions: RequestInit = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      credentials: 'include', // Include cookies for authentication
-    };
-
-    const response = await fetch(url, { ...defaultOptions, ...options });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Authentication required. Please log in.');
-      }
-      if (response.status === 404) {
-        throw new Error('Exchange rate not found.');
-      }
-      if (response.status >= 500) {
-        throw new Error('Server error. Please try again later.');
+    // ARCHITECTURE: Use ApiClient for consistent error handling, retry logic, and CSRF
+    try {
+      const method = (options.method || 'GET').toUpperCase() as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+      let params: any = undefined;
+      
+      // Parse body if present
+      if (options.body) {
+        try {
+          params = JSON.parse(options.body as string);
+        } catch {
+          params = options.body;
+        }
       }
       
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      const response = await this.apiClient.request<T>(endpoint, method, params);
+      return response.data || response as T;
+    } catch (error: any) {
+      // ApiClient handles errors, re-throw with context
+      throw error;
     }
-
-    return response.json();
   }
 
   /**

@@ -67,6 +67,7 @@ import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { ErrorState, LoadingState, MobileTable } from '../components/ui';
 import StandardMetricsCard from '../components/StandardMetricsCard';
 // Removed ProfessionalPagination import - using Load More functionality instead
 import {
@@ -139,7 +140,7 @@ interface Client {
   avg_transaction: number;
 }
 
-export default function Transactions() {
+const Transactions = React.memo(function Transactions() {
   const { t } = useLanguage();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -1196,11 +1197,13 @@ const formatDate = (dateString: string) => {
           <TabsContent value="transactions" className="mt-6">
             {/* Error Display */}
             {error && (
-              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center">
-                  <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-                  <p className="text-red-700">{error}</p>
-                </div>
+              <div className="mb-4">
+                <ErrorState
+                  title="Failed to load transactions"
+                  message={error}
+                  onRetry={() => fetchTransactions()}
+                  variant="error"
+                />
               </div>
             )}
 
@@ -1216,7 +1219,7 @@ const formatDate = (dateString: string) => {
 
         {/* Search and Filters */}
         <div className="mb-6">
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1224,41 +1227,44 @@ const formatDate = (dateString: string) => {
                   placeholder="Search transactions, clients, reports..."
                   value={filters.search}
                   onChange={(e) => handleFilterChange('search', e.target.value)}
-                  className="pl-10"
+                  className="pl-10 w-full"
                 />
               </div>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center"
-            >
-              <Filter className="h-4 w-4 mr-2" />
-              Filters
-              {getActiveFilterCount() > 0 && (
-                <Badge className="ml-2 bg-primary-100 text-primary-800">
-                  {getActiveFilterCount()}
-                </Badge>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleExport}
-              disabled={exporting}
-              className="flex items-center"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              {exporting ? 'Exporting...' : 'Export'}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={triggerFileInput}
-              disabled={importing}
-              className="flex items-center"
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              {importing ? 'Importing...' : 'Import'}
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center flex-1 sm:flex-initial min-w-[100px] justify-center"
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Filters</span>
+                <span className="sm:hidden">Filter</span>
+                {getActiveFilterCount() > 0 && (
+                  <Badge className="ml-2 bg-primary-100 text-primary-800">
+                    {getActiveFilterCount()}
+                  </Badge>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center flex-1 sm:flex-initial min-w-[100px] justify-center"
+              >
+                <Download className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export'}</span>
+              </Button>
+              <Button
+                variant="outline"
+                onClick={triggerFileInput}
+                disabled={importing}
+                className="flex items-center flex-1 sm:flex-initial min-w-[100px] justify-center"
+              >
+                <Upload className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{importing ? 'Importing...' : 'Import'}</span>
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -1297,17 +1303,6 @@ const formatDate = (dateString: string) => {
               </div>
             </CardHeader>
             <CardContent>
-              {/* Debug info for dropdown options */}
-              <div className="mb-4 p-3 bg-gray-100 rounded-lg text-xs">
-                <div className="font-semibold text-gray-700 mb-1">Dropdown Options Status:</div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-gray-600">
-                  <div>PSPs: {dropdownOptions.psps?.length || 0}</div>
-                  <div>Categories: {dropdownOptions.categories?.length || 0}</div>
-                  <div>Methods: {dropdownOptions.payment_methods?.length || 0}</div>
-                  <div>Companies: {dropdownOptions.companies?.length || 0}</div>
-                </div>
-              </div>
-              
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* Search Filter */}
                 <div className="space-y-2">
@@ -1370,10 +1365,6 @@ const formatDate = (dateString: string) => {
                       <option value="" disabled>Loading PSPs...</option>
                     )}
                   </select>
-                  {/* Debug info */}
-                  <div className="text-xs text-gray-500">
-                    PSPs loaded: {dropdownOptions.psps?.length || 0}
-                  </div>
                 </div>
 
                 {/* Category Filter */}
@@ -1393,10 +1384,6 @@ const formatDate = (dateString: string) => {
                       <option value="" disabled>Loading Categories...</option>
                     )}
                   </select>
-                  {/* Debug info */}
-                  <div className="text-xs text-gray-500">
-                    Categories loaded: {dropdownOptions.categories?.length || 0}
-                  </div>
                 </div>
 
                 {/* Payment Method Filter */}
@@ -1416,10 +1403,6 @@ const formatDate = (dateString: string) => {
                       <option value="" disabled>Loading Methods...</option>
                     )}
                   </select>
-                  {/* Debug info */}
-                  <div className="text-xs text-gray-500">
-                    Methods loaded: {dropdownOptions.payment_methods?.length || 0}
-                  </div>
                 </div>
 
                 {/* Company Filter */}
@@ -1439,10 +1422,6 @@ const formatDate = (dateString: string) => {
                       <option value="" disabled>Loading Companies...</option>
                     )}
                   </select>
-                  {/* Debug info */}
-                  <div className="text-xs text-gray-500">
-                    Companies loaded: {dropdownOptions.companies?.length || 0}
-                  </div>
                 </div>
 
                 {/* Amount Range Filters */}
@@ -1532,12 +1511,7 @@ const formatDate = (dateString: string) => {
 
         {/* Loading State */}
         {(loading || isLoadingData) && (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading transactions...</p>
-            </div>
-          </div>
+          <LoadingState message="Loading transactions..." />
         )}
 
         {/* Transactions Table */}
@@ -1597,8 +1571,9 @@ const formatDate = (dateString: string) => {
                 )}
 
                 {/* Table */}
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
+                <MobileTable>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left">
@@ -1788,7 +1763,8 @@ const formatDate = (dateString: string) => {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                </MobileTable>
 
                 {/* Load More Button */}
                 {(() => {
@@ -2128,4 +2104,6 @@ const formatDate = (dateString: string) => {
         </div>
     </>
   );
-}
+});
+
+export default Transactions;

@@ -51,16 +51,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
     
-    // #region agent log
-    React.useEffect(() => {
-      if (!import.meta.env.DEV) return;
-      if (variant) {
-        const hasBlue = variant === 'default' || variant === 'info' || variant === 'link';
-        fetch('http://127.0.0.1:7242/ingest/49fd889e-f043-489a-b352-a05d8b26fc7c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'button.tsx:51',message:'Button variant used',data:{variant,size,hasBlueColor:hasBlue,usesPrimary:variant==='default'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      }
-    }, [variant, size]);
-    // #endregion
-    
     return (
       <Comp
         className={cn(buttonVariants({ variant, size }), className)}

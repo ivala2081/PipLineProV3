@@ -24,21 +24,15 @@ export const useOptimizedDashboardData = (timeRange: string = 'all') => {
     queryKeys.analytics.clients(timeRange),
   ], [timeRange]);
 
-  // Batch fetcher that makes multiple requests in parallel
+  // Batch fetcher that makes multiple requests in parallel - uses api client
   const batchFetcher = useCallback(async (urls: string[]) => {
     try {
+      // Import api client dynamically to avoid circular dependencies
+      const { api } = await import('../utils/apiClient');
+      
       const requests = urls.map(url => 
-        fetch(url, {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'max-age=300', // 5 minutes cache
-          },
-        }).then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return response.json();
+        api.get(url).then(response => response.data).catch(error => {
+          throw new Error(`HTTP error! status: ${error.status || 'unknown'}`);
         })
       );
 
@@ -118,12 +112,10 @@ export const useDashboardStats = (timeRange: string = 'all') => {
   return usePerformanceOptimizedSWR(
     queryKeys.dashboard.stats(timeRange),
     async (url) => {
-      const response = await fetch(url, {
-        credentials: 'include',
-        headers: { 'Cache-Control': 'max-age=300' },
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.json();
+      // Import api client dynamically to avoid circular dependencies
+      const { api } = await import('../utils/apiClient');
+      const response = await api.get(url);
+      return response.data;
     },
     {
       refreshInterval: 45 * 60 * 1000, // 45 minutes (increased from 20)
@@ -136,12 +128,10 @@ export const useSystemPerformance = () => {
   return usePerformanceOptimizedSWR(
     queryKeys.analytics.systemPerformance(),
     async (url) => {
-      const response = await fetch(url, {
-        credentials: 'include',
-        headers: { 'Cache-Control': 'max-age=600' }, // 10 minutes cache
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.json();
+      // Import api client dynamically to avoid circular dependencies
+      const { api } = await import('../utils/apiClient');
+      const response = await api.get(url);
+      return response.data;
     },
     {
       refreshInterval: 20 * 60 * 1000, // 20 minutes (increased from 10)

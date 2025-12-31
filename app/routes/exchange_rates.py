@@ -615,3 +615,119 @@ def auto_fill_missing_rates():
             'success': False,
             'error': 'Internal server error'
         }), 500
+
+
+@exchange_rates_bp.route('/api/v1/exchange-rates/monthly-average', methods=['GET'])
+@login_required
+@handle_api_errors
+def get_monthly_average_rate():
+    """
+    Get monthly average USD/TRY exchange rate from yfinance for a specific month
+    Query params: year (int), month (int)
+    """
+    try:
+        year = request.args.get('year', type=int)
+        month = request.args.get('month', type=int)
+        
+        if not year or not month:
+            return jsonify({
+                'success': False,
+                'error': 'Year and month parameters are required'
+            }), 400
+        
+        if month < 1 or month > 12:
+            return jsonify({
+                'success': False,
+                'error': 'Month must be between 1 and 12'
+            }), 400
+        
+        # Use historical exchange service to get monthly average rate
+        from app.services.historical_exchange_service import historical_exchange_service
+        
+        monthly_rate = historical_exchange_service.get_monthly_average_rate(year, month)
+        
+        if monthly_rate and monthly_rate > 0:
+            logger.info(f"User {current_user.username} fetched monthly average rate for {year}-{month:02d}: {monthly_rate}")
+            return jsonify({
+                'success': True,
+                'data': {
+                    'year': year,
+                    'month': month,
+                    'rate': float(monthly_rate),
+                    'source': 'yfinance'
+                }
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Failed to fetch monthly average rate for {year}-{month:02d}'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error fetching monthly average rate: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
+@exchange_rates_bp.route('/api/v1/exchange-rates/monthly-averages-batch', methods=['POST'])
+@login_required
+@handle_api_errors
+def get_monthly_averages_batch():
+    """
+    Get monthly average USD/TRY exchange rates for multiple months
+    Body: { "months": ["2025-12", "2025-11", ...] } where format is "YYYY-MM"
+    """
+    try:
+        data = request.get_json() or {}
+        months = data.get('months', [])
+        
+        if not months or not isinstance(months, list):
+            return jsonify({
+                'success': False,
+                'error': 'months array is required'
+            }), 400
+        
+        from app.services.historical_exchange_service import historical_exchange_service
+        
+        results = {}
+        for month_str in months:
+            try:
+                # Parse "YYYY-MM" format
+                parts = month_str.split('-')
+                if len(parts) != 2:
+                    continue
+                
+                year = int(parts[0])
+                month = int(parts[1])
+                
+                if month < 1 or month > 12:
+                    continue
+                
+                monthly_rate = historical_exchange_service.get_monthly_average_rate(year, month)
+                
+                if monthly_rate and monthly_rate > 0:
+                    results[month_str] = float(monthly_rate)
+                else:
+                    logger.warning(f"Failed to fetch rate for {month_str}")
+                    
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid month format: {month_str}, error: {e}")
+                continue
+        
+        logger.info(f"User {current_user.username} fetched monthly average rates for {len(results)} months")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'rates': results
+            }
+        }), 200
+            
+    except Exception as e:
+        logger.error(f"Error fetching monthly average rates batch: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500

@@ -35,10 +35,8 @@ class EnhancedErrorBoundary extends Component<Props, State> {
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Error caught by boundary:', error, errorInfo);
-    // #region agent log (dev only)
-    if (import.meta.env.DEV) {
-      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'EnhancedErrorBoundary.tsx:componentDidCatch',message:'React error boundary caught error',data:{message:error?.message||'Unknown',hasStack:!!error?.stack,componentStack:(errorInfo as any)?.componentStack?String((errorInfo as any).componentStack).slice(0,500):null,href:typeof window!=='undefined'?window.location.href:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    }
+    // #region agent log
+    fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'EnhancedErrorBoundary.tsx:componentDidCatch',message:'React error boundary caught error',data:{message:error?.message||'Unknown',errorName:error?.name,hasStack:!!error?.stack,errorStack:error?.stack?.substring(0,500),componentStack:errorInfo?.componentStack?.substring(0,500),href:typeof window!=='undefined'?window.location.href:null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,E'})}).catch(()=>{});
     // #endregion
     
     // Log error to console for debugging

@@ -62,32 +62,15 @@ function App() {
 
   // Preload critical components and setup performance optimization
   useEffect(() => {
-    // #region agent log (dev only)
-    if (import.meta.env.DEV) {
-      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:55',message:'App component mounted - UI/UX analysis start',data:{viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,userAgent:navigator.userAgent,colorScheme:window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D'})}).catch(()=>{});
-    }
-    // #endregion
-    
     // Preload critical components after initial load
     const timer = setTimeout(async () => {
       await preloadComponents();
       // Start optimization based on usage patterns
       lazyLoadingOptimizer.preloadBasedOnPatterns();
-      
-      // #region agent log (dev only)
-      if (import.meta.env.DEV) {
-        fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:62',message:'Components preloaded - checking computed styles',data:{bodyBgColor:getComputedStyle(document.body).backgroundColor,bodyColor:getComputedStyle(document.body).color,rootPrimary:getComputedStyle(document.documentElement).getPropertyValue('--color-primary-500'),rootPrimaryAlt:getComputedStyle(document.documentElement).getPropertyValue('--business-primary')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
-      }
-      // #endregion
     }, 1000);
 
     // Setup performance monitoring
     performanceOptimizer.setupLazyImages();
-
-    // Initialize UI/UX debugging (dev only)
-    if (import.meta.env.DEV) {
-      initializeUIUXDebugging();
-    }
 
     // Cleanup on unmount
     return () => {

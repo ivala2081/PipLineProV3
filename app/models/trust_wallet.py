@@ -10,7 +10,7 @@ import json
 
 class TrustWallet(db.Model):
     """Model for managing Trust wallet addresses"""
-    __tablename__ = 'trust_wallet'
+    __tablename__ = 'trust_wallets'
     
     id = db.Column(db.Integer, primary_key=True)
     wallet_address = db.Column(db.String(100), nullable=False, unique=True)
@@ -19,14 +19,14 @@ class TrustWallet(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     
     # Last sync information
     last_sync_block = db.Column(db.Integer, default=0)
     last_sync_time = db.Column(db.DateTime)
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Relationships
     user = db.relationship('User', backref=db.backref('trust_wallets', lazy=True))
@@ -92,10 +92,10 @@ class TrustWallet(db.Model):
 
 class TrustWalletTransaction(db.Model):
     """Model for Trust wallet blockchain transactions"""
-    __tablename__ = 'trust_wallet_transaction'
+    __tablename__ = 'trust_wallet_transactions'
     
     id = db.Column(db.Integer, primary_key=True)
-    wallet_id = db.Column(db.Integer, db.ForeignKey('trust_wallet.id'), nullable=False)
+    wallet_id = db.Column(db.Integer, db.ForeignKey('trust_wallets.id'), nullable=False)
     
     # Blockchain transaction details
     transaction_hash = db.Column(db.String(100), nullable=False, unique=True)
@@ -134,7 +134,7 @@ class TrustWalletTransaction(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Indexes for performance
     __table_args__ = (

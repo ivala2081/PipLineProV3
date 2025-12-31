@@ -113,9 +113,9 @@ def detailed_health():
                 'disk_percent': psutil.disk_usage('/').percent
             },
             'database': {
-                'pool_size': db.engine.pool.size() if hasattr(db.engine, 'pool') else 0,
-                'checked_in': db.engine.pool.checkedin() if hasattr(db.engine, 'pool') else 0,
-                'checked_out': db.engine.pool.checkedout() if hasattr(db.engine, 'pool') else 0
+                'pool_size': db.engine.pool.size if hasattr(db.engine, 'pool') and hasattr(db.engine.pool, 'size') else 0,
+                'checked_in': db.engine.pool.checkedin if hasattr(db.engine, 'pool') and hasattr(db.engine.pool, 'checkedin') else 0,
+                'checked_out': db.engine.pool.checkedout if hasattr(db.engine, 'pool') and hasattr(db.engine.pool, 'checkedout') else 0
             },
             'cache': cache_service.get_stats() if CACHE_SERVICE_AVAILABLE else {},
             'events': event_service.get_stream_info() if EVENT_SERVICE_AVAILABLE else {},

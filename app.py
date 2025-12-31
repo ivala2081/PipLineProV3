@@ -34,12 +34,18 @@ numeric_level = getattr(logging, log_level.upper(), logging.WARNING if os.getenv
 logging.basicConfig(level=numeric_level)
 print(f"Logging level set to: {log_level}")
 
-def setup_development_environment():
-    """Set up development environment variables"""
-    # Set development environment
-    os.environ['FLASK_ENV'] = 'development'
+def setup_environment():
+    """Set up environment variables based on FLASK_ENV"""
+    # Respect FLASK_ENV from .env or shell - don't override it
+    flask_env = os.environ.get('FLASK_ENV', 'development')
     
-    os.environ['DEBUG'] = 'True'
+    if flask_env == 'production':
+        os.environ['DEBUG'] = 'False'
+        print("Production environment configured")
+    else:
+        os.environ['FLASK_ENV'] = 'development'
+        os.environ['DEBUG'] = 'True'
+        print("Development environment configured")
     
     # SECRET_KEY should NEVER be hardcoded in production
     # For development only, use a generated key or require it in .env
@@ -57,8 +63,6 @@ def setup_development_environment():
     
     # Database URL is now handled by config.py
     # No need to override here
-    
-    print("Development environment configured")
 
 def check_dependencies():
     """Check if required dependencies are installed"""
@@ -86,7 +90,7 @@ def main():
     print("Starting PipLinePro...")
     
     # Set up environment
-    setup_development_environment()
+    setup_environment()
     
     # Validate environment variables BEFORE starting
     print("\n" + "="*70)
@@ -235,6 +239,15 @@ def main():
                             admin_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
                             app.logger.warning(f"WARNING: No ADMIN_PASSWORD set. Generated temporary password: {admin_password}")
                             app.logger.warning("IMPORTANT: Change this password immediately after first login!")
+                        
+                        # SECURITY: Validate password strength even for auto-generated admin
+                        from app.services.security_service import SecurityService
+                        security_service = SecurityService()
+                        # Note: Auto-generated password should already meet requirements
+                        # but we validate to ensure consistency
+                        password_validation = security_service.validate_password_strength(admin_password)
+                        if not password_validation.get('is_valid', False):
+                            app.logger.warning(f"Auto-generated admin password does not meet requirements, but continuing")
                         
                         admin_user = User()
                         admin_user.username = admin_username

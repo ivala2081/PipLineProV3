@@ -15,7 +15,7 @@ class Organization(db.Model):
     Each B2B customer will have one Organization record.
     All data (users, transactions, expenses, etc.) will be linked to an organization.
     """
-    __tablename__ = 'organization'
+    __tablename__ = 'organizations'
     
     id = db.Column(db.Integer, primary_key=True)
     

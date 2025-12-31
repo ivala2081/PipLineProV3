@@ -10,7 +10,7 @@ import json
 
 class Transaction(db.Model):
     """Transaction model with enhanced validation and business logic"""
-    __tablename__ = 'transaction'  # Keep original name to match database
+    __tablename__ = 'transactions'  # Standard table name
     
     id = db.Column(db.Integer, primary_key=True)
     client_name = db.Column(db.String(100), nullable=False)
@@ -34,10 +34,10 @@ class Transaction(db.Model):
     
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
     
     # Multi-tenancy: Organization relationship
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Enhanced database indexes for performance optimization
     __table_args__ = (
@@ -70,9 +70,9 @@ class Transaction(db.Model):
         # Note: SQLite doesn't support partial indexes, but PostgreSQL does
     )
     
-    # Relationships
-    user = db.relationship('User', backref=db.backref('transactions', lazy=True))
-    organization = db.relationship('Organization', backref=db.backref('transactions', lazy=True))
+    # Relationships - PERFORMANCE: Use selectinload to prevent N+1 queries
+    user = db.relationship('User', backref=db.backref('transactions', lazy='selectin'))
+    organization = db.relationship('Organization', backref=db.backref('transactions', lazy='selectin'))
     
     @validates('client_name')
     def validate_client_name(self, key, value):

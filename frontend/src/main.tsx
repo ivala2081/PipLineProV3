@@ -134,23 +134,24 @@ setTimeout(() => {
 // Register service worker for PWA
 // Also unregister any old service workers that might be causing redirect issues
 if (import.meta.env.PROD) {
-  // First, check if we need to unregister old service workers
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      registrations.forEach((registration) => {
-        // Unregister if it's causing issues (user can manually clear cache)
-        // We'll keep this commented for now, but can enable if needed
-        // registration.unregister();
-      });
-    });
-  }
-  
   serviceWorker.register({
-    onSuccess: () => {
-
+    onSuccess: (registration) => {
+      console.log('[SW] Service worker registered successfully');
+      // Check for updates every 5 minutes
+      setInterval(() => {
+        registration?.update();
+      }, 5 * 60 * 1000);
     },
-    onUpdate: () => {
-
+    onUpdate: (registration) => {
+      console.log('[SW] New service worker available! Updating...');
+      // Force the new service worker to activate immediately
+      if (registration && registration.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        // Reload the page to get the new version
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
     },
   });
 } else {
@@ -158,6 +159,7 @@ if (import.meta.env.PROD) {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then((registrations) => {
       registrations.forEach((registration) => {
+        console.log('[SW] Unregistering service worker in development');
         registration.unregister();
       });
     });

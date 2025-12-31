@@ -23,7 +23,7 @@ class PspTrack(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Database constraints and indexes
     __table_args__ = (
@@ -70,7 +70,7 @@ class DailyBalance(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Database constraints and indexes
     __table_args__ = (
@@ -113,7 +113,7 @@ class PSPAllocation(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Composite unique constraint to ensure one allocation per PSP per date
     __table_args__ = (
@@ -163,7 +163,7 @@ class PSPDevir(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Composite unique constraint to ensure one Devir override per PSP per date
     __table_args__ = (
@@ -213,7 +213,7 @@ class PSPKasaTop(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Composite unique constraint to ensure one KASA TOP override per PSP per date
     __table_args__ = (
@@ -276,10 +276,10 @@ class DailyNet(db.Model):
     notes = db.Column(db.Text, nullable=True)  # Optional notes
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Database constraints and indexes
     __table_args__ = (
@@ -332,7 +332,7 @@ class DailyNet(db.Model):
 
 class Expense(db.Model):
     """Expense model for Accounting → Expenses tab"""
-    __tablename__ = 'expense'
+    __tablename__ = 'expenses'
     
     id = db.Column(db.Integer, primary_key=True)
     description = db.Column(db.String(200), nullable=False)  # Açıklama
@@ -350,10 +350,10 @@ class Expense(db.Model):
     source = db.Column(db.String(100), nullable=True)  # Kaynak
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Database constraints and indexes
     __table_args__ = (
@@ -435,7 +435,7 @@ class Expense(db.Model):
 
 class ExpenseBudget(db.Model):
     """Budget model for expense tracking and planning"""
-    __tablename__ = 'expense_budget'
+    __tablename__ = 'expense_budgets'
     
     id = db.Column(db.Integer, primary_key=True)
     budget_period = db.Column(db.String(50), nullable=False)  # e.g., "2025-01" for monthly budgets
@@ -457,10 +457,10 @@ class ExpenseBudget(db.Model):
     
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Database constraints and indexes
     __table_args__ = (
@@ -523,7 +523,7 @@ class ExpenseBudget(db.Model):
 
 class MonthlyCurrencySummary(db.Model):
     """Monthly Currency Summary model for Internal Revenue tracking"""
-    __tablename__ = 'monthly_currency_summary'
+    __tablename__ = 'monthly_currency_summaries'
     
     id = db.Column(db.Integer, primary_key=True)
     month_period = db.Column(db.String(7), nullable=False)  # Format: "YYYY-MM" (e.g., "2025-01")
@@ -547,10 +547,10 @@ class MonthlyCurrencySummary(db.Model):
     
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     
     # Multi-tenancy
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
     # Database constraints and indexes
     __table_args__ = (

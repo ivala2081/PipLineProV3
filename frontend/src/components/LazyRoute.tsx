@@ -38,12 +38,37 @@ const LazyRoute: React.FC<LazyRouteProps> = ({
 
   // Wrap import function to catch errors
   const wrappedImportFn = () => {
-    return importFn().catch((error) => {
+    // #region agent log
+    fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'LazyRoute.tsx:wrappedImportFn',message:'Starting component import',data:{importFnString:importFn.toString().substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
+    
+    // Log to console for debugging
+    console.log('[LazyRoute] Starting component import...');
+    
+    return importFn().then((result) => {
+      // #region agent log
+      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'LazyRoute.tsx:wrappedImportFn',message:'Component import succeeded',data:{hasDefault:!!result?.default,keys:result?Object.keys(result):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+      // #endregion
+      
+      console.log('[LazyRoute] Component import succeeded', { hasDefault: !!result?.default });
+      return result;
+    }).catch((error) => {
       const errorDetails = {
         message: error?.message || 'Unknown error',
         stack: error?.stack || 'No stack trace',
         name: error?.name || 'Error',
+        cause: error?.cause,
+        fileName: error?.fileName,
+        lineNumber: error?.lineNumber,
       };
+      
+      // Log full error to console for debugging
+      console.error('[LazyRoute] Component import failed:', errorDetails);
+      console.error('[LazyRoute] Full error object:', error);
+      
+      // #region agent log
+      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'LazyRoute.tsx:wrappedImportFn',message:'Component import failed',data:{errorName:errorDetails.name,errorMessage:errorDetails.message,errorStack:errorDetails.stack.substring(0,500),errorCause:errorDetails.cause,errorFileName:errorDetails.fileName,errorLineNumber:errorDetails.lineNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+      // #endregion
       
       // Check if it's a chunk loading error (common in production)
       const isChunkError = 
@@ -55,17 +80,20 @@ const LazyRoute: React.FC<LazyRouteProps> = ({
         errorDetails.message?.includes('network error') ||
         errorDetails.message?.includes('Failed to fetch dynamically imported module') ||
         errorDetails.message?.includes('404') ||
-        errorDetails.message?.includes('not found');
+        errorDetails.message?.includes('not found') ||
+        errorDetails.message?.includes('Unexpected token') ||
+        errorDetails.message?.includes('SyntaxError');
       
-      // Create a user-friendly error message
+      // Create a user-friendly error message with more details
       let errorMessage = isChunkError
-        ? 'Failed to load component. Please refresh the page.'
-        : `Failed to load component: ${errorDetails.message}`;
+        ? `Failed to load component chunk. Error: ${errorDetails.message || 'Unknown error'}. Please try refreshing the page or clearing your cache.`
+        : `Failed to load component: ${errorDetails.message || 'Unknown error'}`;
       
       const enhancedError = new Error(errorMessage);
       enhancedError.stack = errorDetails.stack;
       (enhancedError as any).originalError = error;
       (enhancedError as any).isChunkError = isChunkError;
+      (enhancedError as any).errorDetails = errorDetails;
       throw enhancedError;
     });
   };
@@ -103,6 +131,10 @@ const LazyRoute: React.FC<LazyRouteProps> = ({
   // If there's an error in the loading state, show error immediately
   if (state.error) {
     const isChunkError = (state.error as any)?.isChunkError || false;
+    
+    // #region agent log
+    fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'LazyRoute.tsx:render',message:'Showing error UI',data:{errorMessage:state.error.message,isChunkError,retryCount:state.retryCount},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
+    // #endregion
     
     return (
       <div className="flex items-center justify-center min-h-[200px] p-8">
@@ -152,24 +184,31 @@ const LazyRoute: React.FC<LazyRouteProps> = ({
   }
 
   // Default error fallback
-  const defaultErrorFallback = (
-    <div className="flex items-center justify-center min-h-[200px] p-8">
-      <div className="text-center max-w-md">
-        <div className="text-red-500 text-lg font-semibold mb-2">
-          Failed to load component
-        </div>
-        <div className="text-gray-600 text-sm mb-4">
-          Please try refreshing the page or contact support if the problem persists.
-        </div>
-        <div className="flex gap-2 justify-center">
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-gray-900 text-white rounded hover:bg-gray-800 transition-colors"
-          >
-            Refresh Page
-          </button>
-          <button
-            onClick={async () => {
+const defaultErrorFallback = (
+  <div className="flex items-center justify-center min-h-[200px] p-8">
+    <div className="text-center max-w-md">
+      <div className="text-red-500 text-lg font-semibold mb-2">
+        Failed to load component
+      </div>
+      <div className="text-gray-600 text-sm mb-4">
+        This is usually caused by:
+        <ul className="list-disc list-inside mt-2 text-left">
+          <li>Network connectivity issues</li>
+          <li>Outdated browser cache</li>
+          <li>Missing or corrupted JavaScript files</li>
+        </ul>
+        Please try refreshing the page or clearing your cache.
+      </div>
+      <div className="flex gap-2 justify-center">
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-gray-900 text-white rounded hover:bg-gray-800 transition-colors"
+        >
+          Refresh Page
+        </button>
+        <button
+          onClick={async () => {
+            try {
               if ('caches' in window) {
                 const cacheNames = await caches.keys();
                 await Promise.all(cacheNames.map(name => caches.delete(name)));
@@ -178,16 +217,23 @@ const LazyRoute: React.FC<LazyRouteProps> = ({
                 const registrations = await navigator.serviceWorker.getRegistrations();
                 await Promise.all(registrations.map(reg => reg.unregister()));
               }
+              // Clear localStorage cache as well
+              localStorage.clear();
+              sessionStorage.clear();
               window.location.reload();
-            }}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-          >
-            Clear Cache & Reload
-          </button>
-        </div>
+            } catch (error) {
+              console.error('Error clearing cache:', error);
+              window.location.reload();
+            }
+          }}
+          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+        >
+          Clear Cache & Reload
+        </button>
       </div>
     </div>
-  );
+  </div>
+);
 
   return (
     <EnhancedErrorBoundary fallback={errorFallback || defaultErrorFallback}>

@@ -183,7 +183,7 @@ class Config:
         'X-Frame-Options': 'DENY',
         'X-XSS-Protection': '1; mode=block',
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; frame-ancestors 'none';",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net https://cdn.socket.io https://unpkg.com https://cdn.redoc.ly; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; worker-src 'self' blob:; frame-ancestors 'none';",
         'Referrer-Policy': 'strict-origin-when-cross-origin',
         'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -269,6 +269,7 @@ class DevelopmentConfig(Config):
             return db_uri
         elif db_type == 'postgresql' or db_type == 'postgres':
             # Build PostgreSQL URI from components
+            from urllib.parse import quote_plus
             host = os.environ.get('POSTGRES_HOST')
             port = os.environ.get('POSTGRES_PORT', '5432')
             db = os.environ.get('POSTGRES_DB')
@@ -285,8 +286,11 @@ class DevelopmentConfig(Config):
                 if not password: missing_vars.append('POSTGRES_PASSWORD')
                 raise ValueError(f"Missing required PostgreSQL environment variables: {', '.join(missing_vars)}")
             
-            db_uri = f"postgresql://{user}:{password}@{host}:{port}/{db}?sslmode={ssl_mode}"
-            print(f"[DB Config] Built PostgreSQL connection string: postgresql://{user}:***@{host}:{port}/{db}")
+            # URL-encode user and password to handle special characters like @
+            user_encoded = quote_plus(user)
+            password_encoded = quote_plus(password)
+            db_uri = f"postgresql://{user_encoded}:{password_encoded}@{host}:{port}/{db}?sslmode={ssl_mode}"
+            print(f"[DB Config] Built PostgreSQL connection string: postgresql://{user_encoded}:***@{host}:{port}/{db}")
             return db_uri
         elif db_type == 'sqlite':
             # SQLite fallback (only if explicitly set)
@@ -395,7 +399,7 @@ class DevelopmentConfig(Config):
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'SAMEORIGIN',
         'X-XSS-Protection': '1; mode=block',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io;",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net https://unpkg.com https://cdn.redoc.ly; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://unpkg.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; worker-src 'self' blob:;",
     }
     
     # Development Redis settings
@@ -408,13 +412,14 @@ class ProductionConfig(Config):
     DEBUG = False
     
     # CORS Configuration for Production - Restrictive, use environment variable
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '').split(',') if os.environ.get('CORS_ORIGINS') else []
+    # IMPORTANT: Include both HTTP and HTTPS variants for proper CORS support
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', 'http://erp.orderinvests.net,https://erp.orderinvests.net,http://192.168.1.100:5173').split(',')
     CORS_MAX_AGE = 3600  # 1 hour for production
     
-    # Database configuration - SQLite is now the default database for production
+    # Database configuration - Uses local treasury database by default
     @staticmethod
     def get_database_uri():
-        """Get database URI based on environment variables - SQLite is default"""
+        """Get database URI based on environment variables - Local database is default"""
         if os.environ.get('DATABASE_URL'):
             return os.environ.get('DATABASE_URL')
         
@@ -456,6 +461,7 @@ class ProductionConfig(Config):
             return db_uri
         elif db_type == 'postgresql' or db_type == 'postgres':
             # Build PostgreSQL URI from components
+            from urllib.parse import quote_plus
             host = os.environ.get('POSTGRES_HOST')
             port = os.environ.get('POSTGRES_PORT', '5432')
             db = os.environ.get('POSTGRES_DB')
@@ -472,8 +478,11 @@ class ProductionConfig(Config):
                 if not password: missing_vars.append('POSTGRES_PASSWORD')
                 raise ValueError(f"Missing required PostgreSQL environment variables: {', '.join(missing_vars)}")
             
-            db_uri = f"postgresql://{user}:{password}@{host}:{port}/{db}?sslmode={ssl_mode}"
-            print(f"[DB Config] Production - Built PostgreSQL connection string: postgresql://{user}:***@{host}:{port}/{db}")
+            # URL-encode user and password to handle special characters like @
+            user_encoded = quote_plus(user)
+            password_encoded = quote_plus(password)
+            db_uri = f"postgresql://{user_encoded}:{password_encoded}@{host}:{port}/{db}?sslmode={ssl_mode}"
+            print(f"[DB Config] Production - Built PostgreSQL connection string: postgresql://{user_encoded}:***@{host}:{port}/{db}")
             return db_uri
         elif db_type == 'sqlite':
             # SQLite for production - using treasury_fresh.db with all existing data
@@ -496,19 +505,34 @@ class ProductionConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or None  # Will be set after class definition
     # Production security - Cookie settings
     SESSION_COOKIE_HTTPONLY = True  # Not accessible via JavaScript
-    # SESSION_COOKIE_SECURE: MUST be True in production when using HTTPS
-    # Automatically detect HTTPS from environment or require explicit setting
+    # SESSION_COOKIE_SECURE: For HTTP-only production sites (non-HTTPS), must be False
+    # IMPORTANT: If using HTTP (not HTTPS), cookies must have secure=False
     is_https = os.environ.get('HTTPS_ENABLED', 'false').lower() == 'true' or \
                os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+    
+    # CRITICAL FIX: Allow HTTP cookies in production for HTTP-only sites
+    # If you're using HTTP (not HTTPS), SESSION_COOKIE_SECURE MUST be False
     SESSION_COOKIE_SECURE = is_https
-    if not is_https:
-        import warnings
-        warnings.warn(
-            "SESSION_COOKIE_SECURE is False. In production with HTTPS, "
-            "set SESSION_COOKIE_SECURE=true or HTTPS_ENABLED=true in environment variables.",
-            UserWarning
-        )
-    SESSION_COOKIE_SAMESITE = 'Lax'  # Lax for compatibility, Strict for better security
+    
+    # SESSION_COOKIE_SAMESITE: CRITICAL for cross-origin cookie handling
+    # - 'None' requires HTTPS and allows cross-origin cookies
+    # - 'Lax' allows same-site and top-level navigation (HTTP compatible)
+    # - For HTTP sites, 'Lax' is the only option since 'None' requires Secure flag
+    SESSION_COOKIE_SAMESITE = 'None' if is_https else 'Lax'
+    
+    # SESSION_COOKIE_DOMAIN: Set to parent domain to share cookies across subdomains
+    # - None = Cookie is restricted to exact domain/IP
+    # - '.example.com' = Cookie works on all subdomains of example.com
+    # - For IP addresses, this MUST be None
+    # Can be overridden via environment variable
+    SESSION_COOKIE_DOMAIN = os.environ.get('SESSION_COOKIE_DOMAIN', None)
+    
+    # SESSION_COOKIE_PATH: Path for which the cookie is valid
+    SESSION_COOKIE_PATH = '/'
+    
+    # SESSION_COOKIE_NAME: Customize cookie name to avoid conflicts
+    SESSION_COOKIE_NAME = 'pipeline_session'
+    
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)  # Extended session time
     
     # Redis for rate limiting and caching
@@ -544,10 +568,10 @@ class ProductionConfig(Config):
     DB_QUERY_PERFORMANCE_TRACKING = True  # Track all query metrics
     DB_QUERY_STATS_INTERVAL = 3600  # Log stats every hour
     
-    # Production database settings - optimized for SQLite (default) or PostgreSQL/MSSQL
+    # Production database settings - optimized per database type
     @staticmethod
     def get_engine_options():
-        """Get engine options based on database type - SQLite is default"""
+        """Get engine options based on database type - Local database is default"""
         db_type = os.environ.get('DATABASE_TYPE', 'sqlite').lower()
         
         if db_type == 'mssql' or db_type == 'sqlserver':
@@ -609,7 +633,7 @@ class ProductionConfig(Config):
         'X-Frame-Options': 'DENY',
         'X-XSS-Protection': '1; mode=block',
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';",
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net https://cdn.socket.io https://cdnjs.cloudflare.com https://cdn.datatables.net https://unpkg.com https://cdn.redoc.ly; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://unpkg.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';",
         'Referrer-Policy': 'strict-origin-when-cross-origin',
         'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()',
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',

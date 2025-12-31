@@ -182,7 +182,7 @@ export default function AddTransaction() {
         // API direkt olarak {currency: [...], payment_method: [...], ...} formatında döndürüyor
         const data = response.data as GroupedOptions;
 
-// Validate data structure
+        // Validate data structure
         if (!data || typeof data !== 'object') {
           throw new Error('Invalid data format received from API');
         }
@@ -190,27 +190,31 @@ export default function AddTransaction() {
         setDropdownOptions(data);
         setDropdownsLoaded(true);
       } else {
-        const errorMsg = `API returned status ${response.status}`;
-        console.error('Failed to fetch dropdown options:', errorMsg);
-        setError(`Dropdown seçenekleri yüklenemedi (Status: ${response.status}). Lütfen sayfayı yenileyin.`);
+        // API call failed - use fallback and show warning
+        console.error('Failed to fetch dropdown options, status:', response.status);
+        console.warn('⚠️ Using fallback static options');
+        setDropdownOptions(staticFallbackOptions);
+        setDropdownsLoaded(true);
+        
+        // Show user-friendly warning (auto-dismiss after 8 seconds)
+        setError(t('transactions.add_transaction_form.errors.dropdown_load_failed'));
+        setTimeout(() => {
+          setError(null);
+        }, 8000);
       }
     } catch (error: any) {
       console.error('Error fetching dropdown options:', error);
-      const errorMessage = error?.message || 'Bilinmeyen hata';
-      const errorDetails = error?.status ? ` (Status: ${error.status})` : '';
       
-      // Use fallback static options instead of showing error
+      // Use fallback static options instead of blocking the user
       console.warn('⚠️ Using fallback static options due to API error');
       setDropdownOptions(staticFallbackOptions);
       setDropdownsLoaded(true);
       
-      // Show warning instead of error
-      setError(`${t('transactions.add_transaction_form.errors.dropdown_load_failed')} (${errorMessage}${errorDetails})`);
-      
-      // Clear error after 5 seconds
+      // Show user-friendly warning (auto-dismiss after 8 seconds)
+      setError(t('transactions.add_transaction_form.errors.dropdown_load_failed'));
       setTimeout(() => {
         setError(null);
-      }, 5000);
+      }, 8000);
     } finally {
       setLoading(false);
     }

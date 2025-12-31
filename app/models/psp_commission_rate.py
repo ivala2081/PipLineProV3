@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 
 class PSPCommissionRate(db.Model):
     """PSP Commission Rate model for storing time-based commission rate changes"""
-    __tablename__ = 'psp_commission_rate'
+    __tablename__ = 'psp_commission_rates'
     
     id = db.Column(db.Integer, primary_key=True)
     psp_name = db.Column(db.String(100), nullable=False)

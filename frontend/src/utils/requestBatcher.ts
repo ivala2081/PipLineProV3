@@ -1,206 +1,191 @@
 /**
- * Advanced Request Batching System
- * Reduces API calls by batching multiple requests into single calls
+ * Request Batching Utility
+ * Batches multiple API requests into a single request to reduce network overhead
  */
+import { ApiClient } from './apiClient';
 
-interface BatchedRequest {
+export interface BatchedRequest {
   id: string;
   url: string;
-  options: RequestInit;
-  timestamp: number;
+  method: string;
+  params?: Record<string, any>;
   resolve: (value: any) => void;
   reject: (error: any) => void;
 }
 
-interface BatchConfig {
-  maxBatchSize: number;
-  batchDelay: number;
-  maxWaitTime: number;
-}
+export class RequestBatcher {
+  private batch: BatchedRequest[] = [];
+  private batchTimeout: number = 50; // ms - wait for more requests
+  private maxBatchSize: number = 10;
+  private timer: NodeJS.Timeout | null = null;
+  private apiClient: ApiClient;
 
-class RequestBatcher {
-  private batches: Map<string, BatchedRequest[]> = new Map();
-  private timers: Map<string, NodeJS.Timeout> = new Map();
-  private config: BatchConfig;
-
-  constructor(config: Partial<BatchConfig> = {}) {
-    this.config = {
-      maxBatchSize: 10,
-      batchDelay: 50, // 50ms
-      maxWaitTime: 200, // 200ms max wait
-      ...config
-    };
+  constructor(apiClient: ApiClient, batchTimeout: number = 50) {
+    this.apiClient = apiClient;
+    this.batchTimeout = batchTimeout;
   }
 
   /**
-   * Add a request to a batch
+   * Add a request to the batch
    */
-  async batchRequest<T>(
+  public add<T>(
     url: string,
-    options: RequestInit = {},
-    batchKey?: string
+    method: string = 'GET',
+    params?: Record<string, any>
   ): Promise<T> {
-    const key = batchKey || this.getBatchKey(url, options);
-    
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       const request: BatchedRequest = {
-        id: this.generateRequestId(),
+        id: `${Date.now()}-${Math.random()}`,
         url,
-        options,
-        timestamp: Date.now(),
+        method,
+        params,
         resolve,
-        reject
+        reject,
       };
 
-      // Add to batch
-      if (!this.batches.has(key)) {
-        this.batches.set(key, []);
+      this.batch.push(request);
+
+      // If batch is full, execute immediately
+      if (this.batch.length >= this.maxBatchSize) {
+        this.executeBatch();
+        return;
       }
-      this.batches.get(key)!.push(request);
 
-      // Set up batch execution
-      this.scheduleBatch(key);
-
-      // Set timeout for individual request
-      setTimeout(() => {
-        this.executeBatch(key);
-      }, this.config.maxWaitTime);
+      // Otherwise, schedule execution
+      if (!this.timer) {
+        this.timer = setTimeout(() => {
+          this.executeBatch();
+        }, this.batchTimeout);
+      }
     });
   }
 
   /**
-   * Generate a unique batch key based on URL and method
+   * Execute all batched requests
    */
-  private getBatchKey(url: string, options: RequestInit): string {
-    const method = options.method || 'GET';
-    const baseUrl = url.split('?')[0]; // Remove query params
-    return `${method}:${baseUrl}`;
-  }
-
-  /**
-   * Generate unique request ID
-   */
-  private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Schedule batch execution
-   */
-  private scheduleBatch(key: string): void {
-    // Clear existing timer
-    if (this.timers.has(key)) {
-      clearTimeout(this.timers.get(key)!);
+  private async executeBatch(): Promise<void> {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
     }
 
-    // Set new timer
-    const timer = setTimeout(() => {
-      this.executeBatch(key);
-    }, this.config.batchDelay);
+    if (this.batch.length === 0) {
+      return;
+    }
 
-    this.timers.set(key, timer);
+    const currentBatch = [...this.batch];
+    this.batch = [];
+
+    try {
+      // Group requests by endpoint pattern
+      const grouped = this.groupRequests(currentBatch);
+
+      // Execute each group
+      for (const [groupKey, requests] of Object.entries(grouped)) {
+        await this.executeGroup(requests);
+      }
+    } catch (error) {
+      // If batch execution fails, reject all requests
+      currentBatch.forEach((request) => {
+        request.reject(error);
+      });
+    }
   }
 
   /**
-   * Execute a batch of requests
+   * Group requests by endpoint pattern
    */
-  private async executeBatch(key: string): Promise<void> {
-    const batch = this.batches.get(key);
-    if (!batch || batch.length === 0) return;
+  private groupRequests(requests: BatchedRequest[]): Record<string, BatchedRequest[]> {
+    const groups: Record<string, BatchedRequest[]> = {};
 
-    // Clear timer and remove batch
-    if (this.timers.has(key)) {
-      clearTimeout(this.timers.get(key)!);
-      this.timers.delete(key);
-    }
-    this.batches.delete(key);
+    requests.forEach((request) => {
+      // Extract base path (e.g., /api/v1/transactions)
+      const basePath = request.url.split('?')[0];
+      const groupKey = `${request.method}:${basePath}`;
 
-    // Execute requests in parallel
-    const promises = batch.map(async (request) => {
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(request);
+    });
+
+    return groups;
+  }
+
+  /**
+   * Execute a group of similar requests
+   */
+  private async executeGroup(requests: BatchedRequest[]): Promise<void> {
+    if (requests.length === 1) {
+      // Single request - execute normally
+      const request = requests[0];
       try {
-        const response = await fetch(request.url, request.options);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        const data = await response.json();
-        request.resolve(data);
+        const response = await this.apiClient.request(request.url, request.method, request.params);
+        request.resolve(response);
       } catch (error) {
         request.reject(error);
       }
-    });
-
-    await Promise.allSettled(promises);
-  }
-
-  /**
-   * Create a batched API client
-   */
-  createBatchedClient() {
-    return {
-      get: <T>(url: string, batchKey?: string) => 
-        this.batchRequest<T>(url, { method: 'GET' }, batchKey),
-      
-      post: <T>(url: string, data?: any, batchKey?: string) =>
-        this.batchRequest<T>(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: data ? JSON.stringify(data) : undefined
-        }, batchKey),
-      
-      put: <T>(url: string, data?: any, batchKey?: string) =>
-        this.batchRequest<T>(url, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: data ? JSON.stringify(data) : undefined
-        }, batchKey),
-      
-      delete: <T>(url: string, batchKey?: string) =>
-        this.batchRequest<T>(url, { method: 'DELETE' }, batchKey)
-    };
-  }
-
-  /**
-   * Get batch statistics
-   */
-  getStats() {
-    const totalBatches = this.batches.size;
-    const totalRequests = Array.from(this.batches.values())
-      .reduce((sum, batch) => sum + batch.length, 0);
-    
-    return {
-      activeBatches: totalBatches,
-      pendingRequests: totalRequests,
-      config: this.config
-    };
-  }
-
-  /**
-   * Clear all pending batches
-   */
-  clear(): void {
-    // Clear all timers
-    for (const timer of this.timers.values()) {
-      clearTimeout(timer);
+      return;
     }
-    this.timers.clear();
 
-    // Reject all pending requests
-    for (const batch of this.batches.values()) {
-      for (const request of batch) {
-        request.reject(new Error('Batch cleared'));
-      }
+    // Multiple requests - try to batch them
+    // For GET requests, we can combine query params
+    if (requests.every((r) => r.method === 'GET')) {
+      await this.executeBatchGet(requests);
+    } else {
+      // For other methods, execute individually
+      await Promise.all(
+        requests.map(async (request) => {
+          try {
+            const response = await this.apiClient.request(
+              request.url,
+              request.method,
+              request.params
+            );
+            request.resolve(response);
+          } catch (error) {
+            request.reject(error);
+          }
+        })
+      );
     }
-    this.batches.clear();
+  }
+
+  /**
+   * Execute batched GET requests
+   */
+  private async executeBatchGet(requests: BatchedRequest[]): Promise<void> {
+    // For now, execute in parallel (can be optimized further)
+    await Promise.all(
+      requests.map(async (request) => {
+        try {
+          const response = await this.apiClient.get(request.url, request.params);
+          request.resolve(response);
+        } catch (error) {
+          request.reject(error);
+        }
+      })
+    );
+  }
+
+  /**
+   * Flush pending requests immediately
+   */
+  public flush(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.executeBatch();
   }
 }
 
-// Global request batcher instance
-export const requestBatcher = new RequestBatcher({
-  maxBatchSize: 15,
-  batchDelay: 75, // 75ms for better batching
-  maxWaitTime: 300 // 300ms max wait
-});
+// Global batcher instance
+let globalBatcher: RequestBatcher | null = null;
 
-// Export the class and instance
-export default RequestBatcher;
-export { RequestBatcher, type BatchedRequest, type BatchConfig };
+export function getRequestBatcher(apiClient: ApiClient): RequestBatcher {
+  if (!globalBatcher) {
+    globalBatcher = new RequestBatcher(apiClient);
+  }
+  return globalBatcher;
+}

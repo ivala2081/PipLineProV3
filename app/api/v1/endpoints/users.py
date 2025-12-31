@@ -147,6 +147,14 @@ def create_user():
     if len(username) < 3:
         raise ValidationError("Username must be at least 3 characters.")
     
+    # SECURITY: Enforce password complexity validation
+    from app.services.security_service import SecurityService
+    security_service = SecurityService()
+    password_validation = security_service.validate_password_strength(password)
+    if not password_validation.get('is_valid', False):
+        issues = password_validation.get('issues', [])
+        raise ValidationError(f"Password does not meet security requirements: {', '.join(issues)}")
+    
     # Check if username already exists
     existing_user = User.query.filter_by(username=username).first()
     if existing_user:

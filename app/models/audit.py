@@ -7,10 +7,10 @@ from sqlalchemy.orm import validates
 
 class AuditLog(db.Model):
     """Audit log for tracking all changes"""
-    __tablename__ = 'audit_log'
+    __tablename__ = 'audit_logs'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     action = db.Column(db.String(50), nullable=False)  # 'CREATE', 'UPDATE', 'DELETE'
     table_name = db.Column(db.String(50), nullable=False)
     record_id = db.Column(db.Integer, nullable=False)
@@ -73,10 +73,10 @@ class AuditLog(db.Model):
 
 class UserSession(db.Model):
     """User session tracking"""
-    __tablename__ = 'user_session'
+    __tablename__ = 'user_sessions'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     session_token = db.Column(db.String(128), unique=True, nullable=False)
     ip_address = db.Column(db.String(45))
     user_agent = db.Column(db.String(255))
@@ -113,7 +113,7 @@ class UserSession(db.Model):
 
 class LoginAttempt(db.Model):
     """Login attempt tracking for security"""
-    __tablename__ = 'login_attempt'
+    __tablename__ = 'login_attempts'
     
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), nullable=False)

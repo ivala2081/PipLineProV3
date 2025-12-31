@@ -97,6 +97,12 @@ interface Expense {
  * - Lazy Loading: Analytics tab loads only when active
  */
 export default function Accounting() {
+  // #region agent log
+  useEffect(() => {
+    fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Accounting.tsx:component',message:'Accounting component mounted',data:{timestamp:Date.now()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+  }, []);
+  // #endregion
+  
   // Hooks must be called unconditionally at the top
   const { t, currentLanguage } = useLanguage();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -234,16 +240,36 @@ export default function Accounting() {
   const [currentRate, setCurrentRate] = useState<number | null>(null);
   const [fetchingRate, setFetchingRate] = useState(false);
   
+  // Converter toggle state (default: on)
+  const [converterEnabled, setConverterEnabled] = useState<boolean>(true);
+  
   // Calculate amounts based on selected currency and entered amount
   useEffect(() => {
     const amount = parseFloat(formData.amount) || 0;
-    const exchangeRate = currentRate || 42.57;
     
     let calculated = {
       amount_try: 0,
       amount_usd: 0,
       amount_usdt: 0
     };
+    
+    // If converter is disabled, only set the entered currency amount
+    if (!converterEnabled) {
+      if (formData.mount_currency === 'TRY') {
+        calculated.amount_try = amount;
+      } else if (formData.mount_currency === 'USD') {
+        calculated.amount_usd = amount;
+      } else if (formData.mount_currency === 'USDT') {
+        calculated.amount_usdt = amount;
+      }
+      setCalculatedAmounts(calculated);
+      return;
+    }
+    
+    // Converter is enabled - perform conversion using API rate
+    // Default exchange rate - should be fetched from API when available
+    const DEFAULT_EXCHANGE_RATE = 42.00;
+    const exchangeRate = currentRate || DEFAULT_EXCHANGE_RATE;
     
     if (formData.mount_currency === 'TRY') {
       calculated.amount_try = amount;
@@ -260,10 +286,10 @@ export default function Accounting() {
     }
     
     setCalculatedAmounts(calculated);
-  }, [formData.amount, formData.mount_currency, currentRate]);
+  }, [formData.amount, formData.mount_currency, currentRate, converterEnabled]);
 
   // --- Net Tab inner component ---
-  function NetCalculatorInner({ expenses, recordToLoad, onRecordLoaded }: { expenses: Expense[]; recordToLoad: any | null; onRecordLoaded: () => void }) {
+  function NetCalculatorInner({ expenses, recordToLoad, onRecordLoaded, validatePin }: { expenses: Expense[]; recordToLoad: any | null; onRecordLoaded: () => void; validatePin: (pin: string) => Promise<boolean> }) {
     // Helper function to get localStorage key for date-specific values
     const getStorageKey = (date: string) => `net_tab_values_${date}`;
     
@@ -632,7 +658,7 @@ export default function Accounting() {
         }
         
         // Get exchange rate for the date (try to get from API or use default)
-        let exchangeRate = 41.70; // Default fallback
+        let exchangeRate = 42.00; // Default fallback
         let rateSource = 'default';
         
         try {
@@ -642,7 +668,7 @@ export default function Accounting() {
             exchangeRate = parseFloat(rateData.rate);
             if (isNaN(exchangeRate) || exchangeRate <= 0) {
               logger.warn('[Net Cash Fetch] Invalid exchange rate from API, using default');
-              exchangeRate = 41.70;
+              exchangeRate = 42.00;
             } else {
               rateSource = 'api';
             }
@@ -783,7 +809,7 @@ export default function Accounting() {
         }
         
         // Get exchange rate for the date
-        let exchangeRate = 41.70; // Default fallback
+        let exchangeRate = 42.00; // Default fallback
         let rateSource = 'default';
         
         try {
@@ -793,7 +819,7 @@ export default function Accounting() {
             exchangeRate = parseFloat(rateData.rate);
             if (isNaN(exchangeRate) || exchangeRate <= 0) {
               logger.warn('[Commission Fetch] Invalid exchange rate from API, using default');
-              exchangeRate = 41.70;
+              exchangeRate = 42.00;
             } else {
               rateSource = 'api';
             }
@@ -939,7 +965,7 @@ export default function Accounting() {
             results.netCash = { success: true, value: '0', message: t('accounting.net.info_no_transactions_for_date') };
             setNetCashUsd('0'); // Always update state
           } else {
-            let exchangeRate = 41.70;
+            let exchangeRate = 42.00;
             try {
               const rateResp = await api.get(`/api/v1/exchange-rates/historical?date=${date}&pair=USDTRY`);
               const rateData = await api.parseResponse(rateResp);
@@ -989,7 +1015,7 @@ export default function Accounting() {
             results.commission = { success: true, value: '0', message: t('accounting.net.info_no_transactions_for_date') };
             setCommissionUsd('0'); // Always update state
           } else {
-            let exchangeRate = 41.70;
+            let exchangeRate = 42.00;
             try {
               const rateResp = await api.get(`/api/v1/exchange-rates/historical?date=${date}&pair=USDTRY`);
               const rateData = await api.parseResponse(rateResp);
@@ -1199,14 +1225,15 @@ export default function Accounting() {
       }
     };
 
-    const handleConfirmManualMode = () => {
-      if (manualConfirmationCode === '4561') {
+    const handleConfirmManualMode = async () => {
+      const isValid = await validatePin(manualConfirmationCode);
+      if (isValid) {
         setAnlikKasaManual(true);
         setShowManualCodeModal(false);
         setManualConfirmationCode('');
         setIsSaved(false);
       } else {
-        alert(t('accounting.net.invalid_confirmation_code') || 'Invalid confirmation code. Please enter the correct 4-digit code.');
+        error(t('accounting.net.invalid_confirmation_code') || 'Invalid confirmation code. Please enter the correct 4-digit code.');
         setManualConfirmationCode('');
       }
     };
@@ -1215,8 +1242,9 @@ export default function Accounting() {
       setShowDeleteModal(true);
     };
 
-    const handleConfirmDelete = () => {
-      if (deleteSecurityCode === '4561') {
+    const handleConfirmDelete = async () => {
+      const isValid = await validatePin(deleteSecurityCode);
+      if (isValid) {
         // Clear all input values
         setExpensesUsd('0');
         setRolloverUsd('0');
@@ -1251,7 +1279,7 @@ export default function Accounting() {
         // Recalculate with cleared values
         setTimeout(() => fetchNet(), 100);
       } else {
-        alert(t('accounting.net.invalid_confirmation_code') || 'Invalid confirmation code. Please enter the correct 4-digit code.');
+        error(t('accounting.net.invalid_confirmation_code') || 'Invalid confirmation code. Please enter the correct 4-digit code.');
         setDeleteSecurityCode('');
       }
     };
@@ -1399,7 +1427,7 @@ export default function Accounting() {
         if (result && !isSaved) {
           try {
             logger.info('[Auto-save] Saving draft to database...');
-            await saveNetCalculation();
+            await saveNet();
             info('Draft auto-saved successfully');
           } catch (e) {
             logger.error('[Auto-save] Failed to save draft:', e);
@@ -1559,18 +1587,6 @@ export default function Accounting() {
                       {t('accounting.net.today')}
                     </UnifiedButton>
                     
-                    {/* Delete Button */}
-                    <UnifiedButton
-                      variant="outline"
-                      size="sm"
-                      onClick={handleDeleteAll}
-                      className="whitespace-nowrap text-red-600 hover:text-red-700 hover:border-red-300 border-red-300"
-                      icon={<Trash2 className="h-4 w-4" />}
-                      iconPosition="left"
-                    >
-                      Delete
-                    </UnifiedButton>
-                    
                     {/* Fetch All Button */}
                     <UnifiedButton
                       variant="primary"
@@ -1632,7 +1648,7 @@ export default function Accounting() {
                   <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wider">{t('accounting.net.expenses')}</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <Input type="number" value={expensesUsd} onChange={(e) => { setExpensesUsd(e.target.value); setIsSaved(false); setJustFetchedData(false); }} onBlur={() => { if (!justFetchedData) fetchNet(); }} 
+                    <Input type="number" min="0" step="0.01" value={expensesUsd} onChange={(e) => { setExpensesUsd(e.target.value); setIsSaved(false); setJustFetchedData(false); }} onBlur={() => { if (!justFetchedData) fetchNet(); }} 
                       className="pl-8 pr-12 h-11 border-gray-200 focus:outline-none" placeholder="0.00" />
                     <button
                       type="button"
@@ -1651,7 +1667,7 @@ export default function Accounting() {
                   <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wider">{t('accounting.net.rollover_collection')}</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <Input type="number" value={rolloverUsd} onChange={(e) => { setRolloverUsd(e.target.value); setIsSaved(false); }} onBlur={fetchNet} 
+                    <Input type="number" min="0" step="0.01" value={rolloverUsd} onChange={(e) => { setRolloverUsd(e.target.value); setIsSaved(false); }} onBlur={fetchNet} 
                       className="pl-8 h-11 border-gray-200 focus:outline-none" placeholder="0.00" />
                   </div>
                   <p className="text-xs text-gray-500 mt-1.5">{t('accounting.net.rollover_collection_desc')}</p>
@@ -1664,7 +1680,7 @@ export default function Accounting() {
                   <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wider">{t('accounting.net.net_cash_override')}</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <Input type="number" value={netCashUsd} onChange={(e) => { setNetCashUsd(e.target.value); setIsSaved(false); setJustFetchedData(false); }} onBlur={() => { if (!justFetchedData) fetchNet(); }} 
+                    <Input type="number" min="0" step="0.01" value={netCashUsd} onChange={(e) => { setNetCashUsd(e.target.value); setIsSaved(false); setJustFetchedData(false); }} onBlur={() => { if (!justFetchedData) fetchNet(); }} 
                       className="pl-8 pr-12 h-11 border-gray-200 focus:outline-none" placeholder="0.00" />
                     <button
                       type="button"
@@ -1683,7 +1699,7 @@ export default function Accounting() {
                   <label className="block text-xs font-medium text-gray-700 mb-2 uppercase tracking-wider">{t('accounting.net.commission_override')}</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <Input type="number" value={commissionUsd} onChange={(e) => { setCommissionUsd(e.target.value); setIsSaved(false); setJustFetchedData(false); }} onBlur={() => { if (!justFetchedData) fetchNet(); }} 
+                    <Input type="number" min="0" step="0.01" value={commissionUsd} onChange={(e) => { setCommissionUsd(e.target.value); setIsSaved(false); setJustFetchedData(false); }} onBlur={() => { if (!justFetchedData) fetchNet(); }} 
                       className="pl-8 pr-12 h-11 border-gray-200 focus:outline-none" placeholder="0.00" />
                     <button
                       type="button"
@@ -1724,7 +1740,9 @@ export default function Accounting() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <Input 
-                      type="number" 
+                      type="number"
+                      min="0"
+                      step="0.01"
                       value={oncekiKapanisUsd} 
                       onChange={(e) => { setOncekiKapanisUsd(e.target.value); setIsSaved(false); }} 
                       onBlur={fetchNet} 
@@ -1749,7 +1767,9 @@ export default function Accounting() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <Input 
-                      type="number" 
+                      type="number"
+                      min="0"
+                      step="0.01"
                       value={companyCashUsd} 
                       onChange={(e) => { setCompanyCashUsd(e.target.value); setIsSaved(false); }} 
                       onBlur={fetchNet} 
@@ -1766,7 +1786,9 @@ export default function Accounting() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <Input 
-                      type="number" 
+                      type="number"
+                      min="0"
+                      step="0.01"
                       value={cryptoBalanceUsd} 
                       readOnly
                       className="pl-8 pr-12 h-11 border-gray-200 bg-gray-50 focus:outline-none cursor-not-allowed" 
@@ -1819,7 +1841,9 @@ export default function Accounting() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <Input 
-                      type="number" 
+                      type="number"
+                      min="0"
+                      step="0.01"
                       value={anlikKasaUsd} 
                       readOnly={!anlikKasaManual}
                       onChange={(e) => {
@@ -1855,7 +1879,9 @@ export default function Accounting() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <Input 
-                      type="number" 
+                      type="number"
+                      min="0"
+                      step="0.01"
                       value={bekleyenTahsilatUsd} 
                       onChange={(e) => { setBekleyenTahsilatUsd(e.target.value); setIsSaved(false); }} 
                       onBlur={fetchNet} 
@@ -2179,7 +2205,7 @@ export default function Accounting() {
   }
 
   // Daily Net Component - Historical Records Table with Advanced Features
-  function DailyNetView({ onLoadRecord }: { onLoadRecord: (record: any) => void }) {
+  function DailyNetView({ onLoadRecord, validatePin }: { onLoadRecord: (record: any) => void; validatePin: (pin: string) => Promise<boolean> }) {
     // Historical records state
     const [allRecords, setAllRecords] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
@@ -2372,8 +2398,9 @@ export default function Accounting() {
     };
 
     const handleDeleteRecord = async () => {
-      if (editSecurityCode !== '4561') {
-        alert(t('accounting.net.invalid_confirmation_code') || 'Invalid confirmation code. Please enter the correct 4-digit code.');
+      const isValid = await validatePin(editSecurityCode);
+      if (!isValid) {
+        error(t('accounting.net.invalid_confirmation_code') || 'Invalid confirmation code. Please enter the correct 4-digit code.');
         setEditSecurityCode('');
         return;
       }
@@ -3341,15 +3368,54 @@ export default function Accounting() {
   
   // Security PIN for editing
   const [securityPin, setSecurityPin] = useState('');
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinModalCallback, setPinModalCallback] = useState<(() => void) | null>(null);
+  const [pinError, setPinError] = useState('');
+  const [validatingPin, setValidatingPin] = useState(false);
 
-  // Fetch exchange rate on mount for currency summary
-  useEffect(() => {
-    if (isAuthenticated && !authLoading && activeTab === 'expenses' && !currentRate) {
-      fetchCurrentRate().catch(() => {
-        // Silently fail - will use default rate
-      });
+  // Validate PIN via API
+  const validatePinViaApi = useCallback(async (pin: string): Promise<boolean> => {
+    try {
+      setValidatingPin(true);
+      const response = await api.post('/accounting/validate-pin', { pin });
+      const data = await api.parseResponse(response);
+      return data?.valid === true;
+    } catch (err) {
+      logger.error('PIN validation error:', err);
+      return false;
+    } finally {
+      setValidatingPin(false);
     }
-  }, [isAuthenticated, authLoading, activeTab]);
+  }, []);
+
+  // Handle PIN submission
+  const handlePinSubmit = useCallback(async () => {
+    if (securityPin.length !== 4) {
+      setPinError(t('accounting.pin_must_be_4_digits'));
+      return;
+    }
+    
+    const isValid = await validatePinViaApi(securityPin);
+    if (isValid) {
+      setPinError('');
+      setShowPinModal(false);
+      if (pinModalCallback) {
+        pinModalCallback();
+        setPinModalCallback(null);
+      }
+    } else {
+      setPinError(t('accounting.invalid_security_pin'));
+      setSecurityPin('');
+    }
+  }, [securityPin, pinModalCallback, validatePinViaApi, t]);
+
+  // Request PIN validation with callback
+  const requestPinValidation = useCallback((callback: () => void) => {
+    setPinModalCallback(() => callback);
+    setSecurityPin('');
+    setPinError('');
+    setShowPinModal(true);
+  }, []);
 
   // Load expenses from API on component mount
   useEffect(() => {
@@ -3605,6 +3671,100 @@ export default function Accounting() {
     }
   }, [currentRate, info, error]);
   
+  // Currency-based summary (like SİMÜLASYON sheet) - moved here before handleSaveCurrencySummary
+  const currencySummary = useMemo(() => {
+    // Always show all three currencies (company cash/assets)
+    const summary: Record<string, {
+      currency: string;
+      carryover: number; // DEVİR - opening balance (user can edit)
+      inflow: number; // GİREN - total inflow
+      outflow: number; // ÇIKAN - total outflow
+      net: number; // NET = carryover + inflow - outflow
+      usdEquivalent: number; // USD conversion
+    }> = {
+      'TRY': { currency: 'TRY', carryover: tempCarryoverValues.TRY, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 },
+      'USD': { currency: 'USD', carryover: tempCarryoverValues.USD, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 },
+      'USDT': { currency: 'USDT', carryover: tempCarryoverValues.USDT, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 }
+    };
+
+    // Safety check - if no expenses, return empty summary with carryover values
+    if (!expenses || expenses.length === 0) {
+      // Still calculate net and USD equivalent even with no expenses
+      // Use temp exchange rate if available, otherwise fall back to currentRate
+      const exchangeRate = (tempExchangeRates.TRY && parseFloat(tempExchangeRates.TRY) > 0) 
+        ? parseFloat(tempExchangeRates.TRY)
+        : (currentRate && currentRate > 0) ? currentRate : 42.00;
+      Object.keys(summary).forEach(key => {
+        const item = summary[key];
+        item.net = item.carryover + item.inflow - item.outflow;
+        if (key === 'USD' || key === 'USDT') {
+          item.usdEquivalent = item.net;
+        } else if (key === 'TRY') {
+          item.usdEquivalent = exchangeRate > 0 ? item.net / exchangeRate : 0;
+        }
+      });
+      // Return currencies in SİMÜLASYON order: USD, TRY, USDT
+      return [
+        summary['USD'],
+        summary['TRY'],
+        summary['USDT']
+      ];
+    }
+
+    // Calculate totals per currency
+    expenses.forEach(expense => {
+      if (!expense) return; // Safety check
+      
+      const currency = expense.mount_currency || 'TRY';
+      const currencyKey = currency === 'TRY' ? 'TRY' : currency === 'USD' ? 'USD' : 'USDT';
+      
+      if (!summary[currencyKey]) {
+        summary[currencyKey] = { currency: currencyKey, carryover: 0, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 };
+      }
+
+      // Get amount based on currency
+      let amount = 0;
+      if (currency === 'TRY') {
+        amount = expense.amount_try || 0;
+      } else if (currency === 'USD') {
+        amount = expense.amount_usd || 0;
+      } else if (currency === 'USDT') {
+        amount = expense.amount_usdt || 0;
+      }
+
+      // Add to inflow or outflow based on category
+      if (expense.category === 'inflow') {
+        summary[currencyKey].inflow += amount;
+      } else if (expense.category === 'outflow') {
+        summary[currencyKey].outflow += amount;
+      }
+    });
+
+    // Calculate net and USD equivalent (using temp exchange rate if available)
+    const exchangeRate = (tempExchangeRates.TRY && parseFloat(tempExchangeRates.TRY) > 0) 
+      ? parseFloat(tempExchangeRates.TRY)
+      : (currentRate && currentRate > 0) ? currentRate : 42.00; // Use temp rate, fetched rate, or default
+    
+    Object.keys(summary).forEach(key => {
+      const item = summary[key];
+      item.net = item.carryover + item.inflow - item.outflow;
+      
+      // Convert to USD
+      if (key === 'USD' || key === 'USDT') {
+        item.usdEquivalent = item.net; // Already in USD
+      } else if (key === 'TRY') {
+        item.usdEquivalent = exchangeRate > 0 ? item.net / exchangeRate : 0; // Convert TRY to USD
+      }
+    });
+
+    // Return currencies in SİMÜLASYON order: USD, TRY, USDT
+    return [
+      summary['USD'],
+      summary['TRY'],
+      summary['USDT']
+    ];
+  }, [expenses, currentRate, tempCarryoverValues, tempExchangeRates]);
+
   // Save month data
   const handleSaveCurrencySummary = useCallback(async () => {
     try {
@@ -3712,6 +3872,7 @@ export default function Accounting() {
     setViewingExpense(null);
     setIsViewMode(false);
     setShowAddAnother(false);
+    setConverterEnabled(true); // Reset converter toggle to default (on)
     setFormData({
       description: '',
       detail: '',
@@ -3768,51 +3929,45 @@ export default function Accounting() {
   }, []);
 
   const handleOpenEditExpense = useCallback((expense: Expense) => {
-    // Prompt for security PIN before opening edit modal
-    const pin = prompt(t('accounting.enter_security_pin'));
-    
-    if (pin !== '4561') {
-      error(t('accounting.invalid_security_pin'));
-      return;
-    }
-    
-    setEditingExpense(expense);
-    setViewingExpense(null);
-    setIsViewMode(false);
-    // Determine which amount to show based on mount_currency
-    const mountCurrency = expense.mount_currency || 'TRY';
-    let amount = '0';
-    if (mountCurrency === 'TRY') {
-      amount = expense.amount_try?.toString() || '0';
-    } else if (mountCurrency === 'USD') {
-      amount = expense.amount_usd?.toString() || '0';
-    } else if (mountCurrency === 'USDT') {
-      amount = expense.amount_usdt?.toString() || '0';
-    }
-    
-    setFormData({
-      description: expense.description,
-      detail: expense.detail,
-      category: expense.category || 'inflow',
-      type: expense.type || 'payment',
-      amount: amount,
-      mount_currency: mountCurrency,
-      status: expense.status,
-      cost_period: expense.cost_period,
-      payment_date: expense.payment_date,
-      payment_period: expense.payment_period,
-      source: expense.source
+    // Request PIN validation before opening edit modal
+    requestPinValidation(() => {
+      setEditingExpense(expense);
+      setViewingExpense(null);
+      setIsViewMode(false);
+      // Determine which amount to show based on mount_currency
+      const mountCurrency = expense.mount_currency || 'TRY';
+      let amount = '0';
+      if (mountCurrency === 'TRY') {
+        amount = expense.amount_try?.toString() || '0';
+      } else if (mountCurrency === 'USD') {
+        amount = expense.amount_usd?.toString() || '0';
+      } else if (mountCurrency === 'USDT') {
+        amount = expense.amount_usdt?.toString() || '0';
+      }
+      
+      setFormData({
+        description: expense.description,
+        detail: expense.detail,
+        category: expense.category || 'inflow',
+        type: expense.type || 'payment',
+        amount: amount,
+        mount_currency: mountCurrency,
+        status: expense.status,
+        cost_period: expense.cost_period,
+        payment_date: expense.payment_date,
+        payment_period: expense.payment_period,
+        source: expense.source
+      });
+      
+      // Set calculated amounts from expense data
+      setCalculatedAmounts({
+        amount_try: expense.amount_try || 0,
+        amount_usd: expense.amount_usd || 0,
+        amount_usdt: expense.amount_usdt || 0
+      });
+      setShowExpenseModal(true);
     });
-    
-    // Set calculated amounts from expense data
-    setCalculatedAmounts({
-      amount_try: expense.amount_try || 0,
-      amount_usd: expense.amount_usd || 0,
-      amount_usdt: expense.amount_usdt || 0
-    });
-    setSecurityPin('4561'); // Set PIN since it was already validated
-    setShowExpenseModal(true);
-  }, [t]);
+  }, [requestPinValidation]);
 
   const handleCloseExpenseModal = useCallback(() => {
     setShowExpenseModal(false);
@@ -3820,9 +3975,9 @@ export default function Accounting() {
     setViewingExpense(null);
     setIsViewMode(false);
     setShowAddAnother(false);
-    setBaseCurrency('TRY');
     setCurrentRate(null);
     setSecurityPin('');
+    setConverterEnabled(true); // Reset converter toggle to default (on)
     setFormData({
       description: '',
       detail: '',
@@ -3874,7 +4029,16 @@ export default function Accounting() {
     } finally {
       setFetchingRate(false);
     }
-  }, [t]);
+  }, [t, success, error]);
+
+  // Fetch exchange rate on mount for currency summary (moved here after fetchCurrentRate definition)
+  useEffect(() => {
+    if (isAuthenticated && !authLoading && activeTab === 'expenses' && !currentRate) {
+      fetchCurrentRate().catch(() => {
+        // Silently fail - will use default rate
+      });
+    }
+  }, [isAuthenticated, authLoading, activeTab, currentRate, fetchCurrentRate]);
 
   // Auto-conversion is now handled automatically via useEffect based on mount_currency
 
@@ -3990,32 +4154,20 @@ export default function Accounting() {
         
         if (response.ok) {
           const data: any = await api.parseResponse(response);
+          console.log('[Accounting] Add expense response:', { ok: response.ok, status: response.status, data });
           if (data.success && data.expense) {
             // Add new expense to local state
             setExpenses([...expenses, data.expense]);
             success(t('accounting.expense_added_success'));
-            // Show "Add Another" option instead of closing
-            setShowAddAnother(true);
-            // Reset form for adding another expense
-            setFormData({
-              description: '',
-              detail: '',
-              category: 'inflow',
-              type: 'payment',
-              amount: '',
-              mount_currency: 'TRY',
-              status: 'pending',
-              cost_period: '',
-              payment_date: '',
-              payment_period: '',
-              source: ''
-            });
-            setCalculatedAmounts({ amount_try: 0, amount_usd: 0, amount_usdt: 0 });
-            setCurrentRate(null);
+            console.log('[Accounting] Closing modal after successful add');
+            // Close modal after successful add
+            handleCloseExpenseModal();
           } else {
+            console.error('[Accounting] Response missing success or expense:', data);
             error(data.error || 'Failed to create expense');
           }
         } else {
+          console.error('[Accounting] Response not ok:', response.status);
           error('Failed to create expense');
         }
       }
@@ -4025,7 +4177,7 @@ export default function Accounting() {
     } finally {
       setLoading(false);
     }
-  }, [editingExpense, expenses, formData, handleCloseExpenseModal, success, error, t]);
+  }, [editingExpense, expenses, formData, calculatedAmounts, handleCloseExpenseModal, success, error, t]);
 
   const handleDeleteExpense = useCallback(async (id: number) => {
     // #region agent log
@@ -4113,100 +4265,6 @@ export default function Accounting() {
       count: expenses.length
     };
   }, [expenses]);
-
-  // Currency-based summary (like SİMÜLASYON sheet)
-  const currencySummary = useMemo(() => {
-    // Always show all three currencies (company cash/assets)
-    const summary: Record<string, {
-      currency: string;
-      carryover: number; // DEVİR - opening balance (user can edit)
-      inflow: number; // GİREN - total inflow
-      outflow: number; // ÇIKAN - total outflow
-      net: number; // NET = carryover + inflow - outflow
-      usdEquivalent: number; // USD conversion
-    }> = {
-      'TRY': { currency: 'TRY', carryover: tempCarryoverValues.TRY, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 },
-      'USD': { currency: 'USD', carryover: tempCarryoverValues.USD, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 },
-      'USDT': { currency: 'USDT', carryover: tempCarryoverValues.USDT, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 }
-    };
-
-    // Safety check - if no expenses, return empty summary with carryover values
-    if (!expenses || expenses.length === 0) {
-      // Still calculate net and USD equivalent even with no expenses
-      // Use temp exchange rate if available, otherwise fall back to currentRate
-      const exchangeRate = (tempExchangeRates.TRY && parseFloat(tempExchangeRates.TRY) > 0) 
-        ? parseFloat(tempExchangeRates.TRY)
-        : (currentRate && currentRate > 0) ? currentRate : 42.57;
-      Object.keys(summary).forEach(key => {
-        const item = summary[key];
-        item.net = item.carryover + item.inflow - item.outflow;
-        if (key === 'USD' || key === 'USDT') {
-          item.usdEquivalent = item.net;
-        } else if (key === 'TRY') {
-          item.usdEquivalent = exchangeRate > 0 ? item.net / exchangeRate : 0;
-        }
-      });
-      // Return currencies in SİMÜLASYON order: USD, TRY, USDT
-      return [
-        summary['USD'],
-        summary['TRY'],
-        summary['USDT']
-      ];
-    }
-
-    // Calculate totals per currency
-    expenses.forEach(expense => {
-      if (!expense) return; // Safety check
-      
-      const currency = expense.mount_currency || 'TRY';
-      const currencyKey = currency === 'TRY' ? 'TRY' : currency === 'USD' ? 'USD' : 'USDT';
-      
-      if (!summary[currencyKey]) {
-        summary[currencyKey] = { currency: currencyKey, carryover: 0, inflow: 0, outflow: 0, net: 0, usdEquivalent: 0 };
-      }
-
-      // Get amount based on currency
-      let amount = 0;
-      if (currency === 'TRY') {
-        amount = expense.amount_try || 0;
-      } else if (currency === 'USD') {
-        amount = expense.amount_usd || 0;
-      } else if (currency === 'USDT') {
-        amount = expense.amount_usdt || 0;
-      }
-
-      // Add to inflow or outflow based on category
-      if (expense.category === 'inflow') {
-        summary[currencyKey].inflow += amount;
-      } else if (expense.category === 'outflow') {
-        summary[currencyKey].outflow += amount;
-      }
-    });
-
-    // Calculate net and USD equivalent (using temp exchange rate if available)
-    const exchangeRate = (tempExchangeRates.TRY && parseFloat(tempExchangeRates.TRY) > 0) 
-      ? parseFloat(tempExchangeRates.TRY)
-      : (currentRate && currentRate > 0) ? currentRate : 42.57; // Use temp rate, fetched rate, or default
-    
-    Object.keys(summary).forEach(key => {
-      const item = summary[key];
-      item.net = item.carryover + item.inflow - item.outflow;
-      
-      // Convert to USD
-      if (key === 'USD' || key === 'USDT') {
-        item.usdEquivalent = item.net; // Already in USD
-      } else if (key === 'TRY') {
-        item.usdEquivalent = exchangeRate > 0 ? item.net / exchangeRate : 0; // Convert TRY to USD
-      }
-    });
-
-    // Return currencies in SİMÜLASYON order: USD, TRY, USDT
-    return [
-      summary['USD'],
-      summary['TRY'],
-      summary['USDT']
-    ];
-  }, [expenses, currentRate, tempCarryoverValues, tempExchangeRates]);
 
   // Memoized daily summary grouped by payment_date for selected month/year
   const dailySummary = useMemo(() => {
@@ -5433,7 +5491,7 @@ if (authLoading) {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {currencySummary.map((item, index) => {
-                            const exchangeRate = (currentRate && currentRate > 0) ? currentRate : 42.57;
+                            const exchangeRate = (currentRate && currentRate > 0) ? currentRate : 42.00;
                             return (
                             <tr key={item.currency} className="hover:bg-gray-50 transition-colors">
                               <td className="px-6 py-4">
@@ -5667,6 +5725,7 @@ if (authLoading) {
                       expenses={expenses} 
                       recordToLoad={recordToLoad}
                       onRecordLoaded={() => setRecordToLoad(null)}
+                      validatePin={validatePinViaApi}
                     />
                 </CardContent>
               </UnifiedCard>
@@ -5681,12 +5740,101 @@ if (authLoading) {
                     setRecordToLoad(record);
                     setNetView('calculator');
                   }}
+                  validatePin={validatePinViaApi}
                 />
               </div>
             )}
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Security PIN Modal */}
+      {showPinModal && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowPinModal(false);
+              setPinModalCallback(null);
+              setSecurityPin('');
+              setPinError('');
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl border border-gray-200 max-w-sm w-full shadow-2xl">
+            <div className="bg-gray-50 px-6 py-5 border-b border-gray-200 rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{t('accounting.security_verification')}</h3>
+                  <p className="text-sm text-gray-600">{t('accounting.enter_pin_to_continue')}</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('accounting.security_pin')}
+                  </label>
+                  <Input
+                    type="password"
+                    value={securityPin}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setSecurityPin(value);
+                      setPinError('');
+                    }}
+                    placeholder="••••"
+                    className="text-center text-2xl font-mono tracking-[0.5em] h-14"
+                    maxLength={4}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && securityPin.length === 4) {
+                        handlePinSubmit();
+                      }
+                    }}
+                  />
+                  {pinError && (
+                    <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                      <AlertCircle className="h-4 w-4" />
+                      {pinError}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowPinModal(false);
+                      setPinModalCallback(null);
+                      setSecurityPin('');
+                      setPinError('');
+                    }}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+                    onClick={handlePinSubmit}
+                    disabled={securityPin.length !== 4 || validatingPin}
+                  >
+                    {validatingPin ? (
+                      <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Check className="h-4 w-4 mr-2" />
+                    )}
+                    {validatingPin ? t('common.validating') : t('common.confirm')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modern Expense Modal */}
       {showExpenseModal && (
@@ -5806,6 +5954,28 @@ if (authLoading) {
                         {t('accounting.mount')} {!isViewMode && <span className="text-red-500">*</span>}
                       </label>
                       
+                      {/* Converter Toggle */}
+                      {!isViewMode && (
+                        <div className="flex items-center gap-3 mb-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={converterEnabled}
+                              onChange={(e) => setConverterEnabled(e.target.checked)}
+                              className="w-4 h-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-2"
+                            />
+                            <span className="text-sm font-medium text-gray-700">Converter</span>
+                          </label>
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            converterEnabled 
+                              ? 'bg-gray-200 text-gray-700' 
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {converterEnabled ? 'ON' : 'OFF'}
+                          </span>
+                        </div>
+                      )}
+                      
                       {/* Currency Selection - Radio Buttons */}
                       {!isViewMode && (
                         <div className="flex items-center gap-4 mb-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
@@ -5850,6 +6020,8 @@ if (authLoading) {
                         <Input
                           type="number"
                           step="0.01"
+                          min="0"
+                          max="999999999"
                           placeholder="0.00"
                           value={formData.amount}
                           onChange={(e) => setFormData({...formData, amount: e.target.value})}
@@ -5861,24 +6033,32 @@ if (authLoading) {
                       {/* Calculated Amounts (Read-only) */}
                       {!isViewMode && formData.amount && parseFloat(formData.amount) > 0 && (
                         <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md space-y-2">
-                          <div className="text-xs font-semibold text-gray-600 mb-2">{t('accounting.calculated_amounts')}:</div>
-                          <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-gray-500">₺</span>
-                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_try.toFixed(2)} TRY</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-gray-500">$</span>
-                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_usd.toFixed(2)} USD</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-gray-500">₮</span>
-                              <span className="font-mono text-gray-700">{calculatedAmounts.amount_usdt.toFixed(2)} USDT</span>
-                            </div>
-                          </div>
-                          {currentRate && formData.mount_currency !== 'USDT' && (
-                            <div className="text-xs text-gray-500 mt-2">
-                              {t('accounting.rate')}: 1 USD = {currentRate.toFixed(4)} TRY
+                          {converterEnabled ? (
+                            <>
+                              <div className="text-xs font-semibold text-gray-600 mb-2">{t('accounting.calculated_amounts')}:</div>
+                              <div className="grid grid-cols-3 gap-2 text-sm">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-gray-500">₺</span>
+                                  <span className="font-mono text-gray-700">{calculatedAmounts.amount_try.toFixed(2)} TRY</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-gray-500">$</span>
+                                  <span className="font-mono text-gray-700">{calculatedAmounts.amount_usd.toFixed(2)} USD</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-gray-500">₮</span>
+                                  <span className="font-mono text-gray-700">{calculatedAmounts.amount_usdt.toFixed(2)} USDT</span>
+                                </div>
+                              </div>
+                              {currentRate && formData.mount_currency !== 'USDT' && (
+                                <div className="text-xs text-gray-500 mt-2">
+                                  {t('accounting.rate')}: 1 USD = {currentRate.toFixed(4)} TRY
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="text-xs text-gray-500">
+                              Converter is OFF - Only {formData.mount_currency === 'TRY' ? '₺ TRY' : formData.mount_currency === 'USD' ? '$ USD' : '₮ USDT'} amount will be saved
                             </div>
                           )}
                         </div>

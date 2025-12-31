@@ -55,13 +55,13 @@ def get_database_health():
         
         # Get table counts
         tables = {
-            'user': 'Users',
-            '"transaction"': 'Transactions',
-            'exchange_rate': 'Exchange Rates',
-            'psp_commission_rate': 'PSP Commission Rates',
+            'users': 'Users',
+            'transactions': 'Transactions',
+            'exchange_rates': 'Exchange Rates',
+            'psp_commission_rates': 'PSP Commission Rates',
             'psp_devir': 'PSP Devir Records',
             'psp_kasa_top': 'PSP Kasa Top Records',
-            'audit_log': 'Audit Logs'
+            'audit_logs': 'Audit Logs'
         }
         
         table_stats = {}

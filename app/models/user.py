@@ -13,7 +13,7 @@ from app.services.decimal_float_fix_service import decimal_float_service
 
 class User(UserMixin, db.Model):
     """User model with enhanced security features"""
-    __tablename__ = 'user'
+    __tablename__ = 'users'
     
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -21,7 +21,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), default='user')  # 'admin', 'user', 'viewer'
     admin_level = db.Column(db.Integer, default=0)  # 0=user, 1=main_admin, 2=secondary_admin, 3=sub_admin
     admin_permissions = db.Column(db.Text, nullable=True)  # JSON string of specific permissions
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Who created this admin
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Who created this admin
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     is_active = db.Column(db.Boolean, default=True)
     profile_picture = db.Column(db.String(255), nullable=True)  # Path to profile picture
@@ -35,11 +35,11 @@ class User(UserMixin, db.Model):
     
     # Multi-tenancy: Organization relationship
     # nullable=True for backwards compatibility - existing users will have NULL initially
-    organization_id = db.Column(db.Integer, db.ForeignKey('organization.id'), nullable=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)
     
-    # Relationships
-    created_admins = db.relationship('User', backref=db.backref('creator', remote_side=[id]))
-    organization = db.relationship('Organization', backref=db.backref('users', lazy=True))
+    # Relationships - PERFORMANCE: Use selectinload to prevent N+1 queries
+    created_admins = db.relationship('User', backref=db.backref('creator', remote_side=[id], lazy='selectin'))
+    organization = db.relationship('Organization', backref=db.backref('users', lazy='selectin'))
     
     # Add cascade delete relationships for related models
     # These will be defined in the respective models, but we can add them here for clarity

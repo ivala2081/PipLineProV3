@@ -93,14 +93,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       setLastAuthCheck(Date.now());
       
+      // ALTERNATIVE APPROACH: Use JWT token if available (fallback for cookie issues)
+      const authToken = localStorage.getItem('auth_token');
+      const tokenType = localStorage.getItem('auth_token_type') || 'Bearer';
+      
+      const headers: HeadersInit = {
+        'Cache-Control': 'max-age=120', // Cache for 2 minutes (increased from 30 seconds)
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+      
+      // Add JWT token to Authorization header if available
+      if (authToken) {
+        headers['Authorization'] = `${tokenType} ${authToken}`;
+      }
+      
       // Use direct fetch to avoid CSRF token issues during auth check
       const response = await fetch('/api/v1/auth/check', {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Cache-Control': 'max-age=120', // Cache for 2 minutes (increased from 30 seconds)
-          'X-Requested-With': 'XMLHttpRequest',
-        },
+        headers,
       });
 
       // Check if response is empty or failed
@@ -147,6 +158,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setUser(null);
               api.clearToken();
               api.clearCache();
+              // Clear JWT token on logout
+              localStorage.removeItem('auth_token');
+              localStorage.removeItem('auth_token_type');
             }
           }
         } catch (parseError) {
@@ -307,6 +321,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (response.ok && data.user) {
         setUser(data.user);
+        
+        // ALTERNATIVE APPROACH: Store JWT token if provided (fallback for cookie issues)
+        if (data.token) {
+          localStorage.setItem('auth_token', data.token);
+          localStorage.setItem('auth_token_type', data.token_type || 'Bearer');
+          logger.info('JWT token stored for authentication');
+        }
+        
         // Clear cache and get fresh CSRF token after successful login
         api.clearCache();
         await api.refreshSession();
@@ -372,8 +394,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      api.clearToken(); // Clear CSRF token
+      api.clearToken(); // Clear CSRF token and auth_token
       api.clearCache(); // Clear all cached data
+      // Explicitly clear JWT token
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_token_type');
       setUser(null);
       navigate('/login');
     }

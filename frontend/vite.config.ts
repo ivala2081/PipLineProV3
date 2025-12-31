@@ -37,27 +37,29 @@ export default defineConfig({
         timeout: 120000, // 120 second timeout (increased for slow financial performance queries)
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
-            console.log('ðŸ”´ Proxy error:', err.message);
-            console.log('ðŸ’¡ Make sure Flask backend is running on http://127.0.0.1:5000');
+            console.log('🔴 Proxy error:', err.message);
+            console.log('💡 Make sure Flask backend is running on http://127.0.0.1:5000');
           });
           proxy.on('proxyReq', (proxyReq, req, _res) => {
-            console.log('ðŸ“¤ Proxying:', req.method, req.url);
+            console.log('📤 Proxying:', req.method, req.url);
           });
           proxy.on('proxyRes', (proxyRes, req, _res) => {
-            console.log('ðŸ“¥ Response:', proxyRes.statusCode, req.url);
+            console.log('📥 Response:', proxyRes.statusCode, req.url);
           });
         },
       },
     },
   },
   build: {
-    outDir: 'dist_new',
-    emptyOutDir: false,
+    outDir: 'dist', // Production build output directory
+    emptyOutDir: true,
     sourcemap: false, // Disable sourcemaps in production for better performance
     minify: 'terser',
+    // Lower chunk size to prevent large chunks that fail to load
+    chunkSizeWarningLimit: 800,
     terserOptions: {
       compress: {
-        drop_console: true, // AUTO-REMOVE: All console.log() in production builds (Phase 1 âœ…)
+        drop_console: true, // AUTO-REMOVE: All console.log() in production builds (Phase 1 ✅)
         drop_debugger: true, // Remove debugger statements
         pure_funcs: ['console.log', 'console.info', 'console.debug'], // Remove console logs
         passes: 2, // Multiple passes for better optimization
@@ -77,6 +79,13 @@ export default defineConfig({
         // Ensure proper chunk loading in production
         // Use relative paths for better compatibility
         format: 'es',
+        // Add error recovery for chunk loading failures
+        generatedCode: {
+          constBindings: true,
+          objectShorthand: true,
+          reservedNamesAsProps: false,
+          symbols: true,
+        },
         // Chunk naming configuration
         manualChunks: (id) => {
           // Node modules chunking
@@ -158,9 +167,9 @@ export default defineConfig({
           
           // Split large feature modules
           if (id.includes('/pages/')) {
-            const pageName = id.split('/pages/')[1].split('.')[0];
-            // Give Accounting its own chunk to prevent loading issues
-            if (['SystemMonitor', 'BusinessAnalytics', 'Reports', 'RevenueAnalytics', 'Accounting'].includes(pageName)) {
+            const pageName = id.split('/pages/')[1].split('.')[0].split('/')[0];
+            // Give large pages their own chunks to prevent loading issues
+            if (['SystemMonitor', 'BusinessAnalytics', 'Reports', 'RevenueAnalytics', 'Accounting', 'Clients', 'ClientDetail'].includes(pageName)) {
               return `pages-${pageName.toLowerCase()}`;
             }
             return 'pages';
@@ -182,10 +191,14 @@ export default defineConfig({
             return 'contexts';
           }
         },
+        // CRITICAL: Use inlineDynamicImports for better chunk reliability
+        // This prevents "Failed to load component" errors in production
+        inlineDynamicImports: false, // Keep code splitting but with better reliability
         chunkFileNames: 'js/[name]-[hash].js',
         entryFileNames: 'js/index-[hash].js',
         assetFileNames: (assetInfo) => {
-          const info = assetInfo.name.split('.');
+          const name = assetInfo.name || 'asset';
+          const info = name.split('.');
           const ext = info[info.length - 1];
           if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
             return `images/[name]-[hash][extname]`;
@@ -200,7 +213,6 @@ export default defineConfig({
         },
       },
     },
-    chunkSizeWarningLimit: 500, // Lower threshold for better splitting
     target: 'esnext', // Target modern browsers for better performance
     cssCodeSplit: true, // Split CSS files for better caching
     reportCompressedSize: false, // Faster builds

@@ -16,7 +16,8 @@ docs_api = Blueprint('docs_api', __name__)
 @docs_api.route('/')
 def api_documentation():
     """Main API documentation endpoint - Shows HTML landing page"""
-    from flask import render_template_string
+    from flask import Response, current_app
+    
     html = """
 <!DOCTYPE html>
 <html lang="en">
@@ -144,7 +145,17 @@ def api_documentation():
 </body>
 </html>
     """
-    return render_template_string(html)
+    
+    try:
+        # Try render_template_string first (for consistency with other endpoints)
+        from flask import render_template_string
+        result = render_template_string(html)
+        return result
+    except Exception as e:
+        # If render_template_string fails, log the error and return HTML directly
+        logger.error(f"Error rendering template in api_documentation: {e}", exc_info=True)
+        # Return HTML directly with proper content-type header
+        return Response(html, mimetype='text/html')
 
 @docs_api.route('/transactions')
 def transactions_docs():
@@ -426,7 +437,8 @@ def openapi_spec():
 @docs_api.route('/swagger')
 def swagger_ui():
     """Serve Swagger UI for interactive API documentation"""
-    from flask import render_template_string
+    from flask import Response, render_template_string
+    
     html = """
 <!DOCTYPE html>
 <html lang="en">
@@ -467,13 +479,19 @@ def swagger_ui():
 </body>
 </html>
     """
-    return render_template_string(html)
+    
+    try:
+        return render_template_string(html)
+    except Exception as e:
+        logger.error(f"Error rendering Swagger UI template: {e}", exc_info=True)
+        return Response(html, mimetype='text/html')
 
 
 @docs_api.route('/redoc')
 def redoc_ui():
     """Serve ReDoc UI for alternative API documentation view"""
-    from flask import render_template_string
+    from flask import Response, render_template_string
+    
     html = """
 <!DOCTYPE html>
 <html>
@@ -492,4 +510,9 @@ def redoc_ui():
 </body>
 </html>
     """
-    return render_template_string(html)
+    
+    try:
+        return render_template_string(html)
+    except Exception as e:
+        logger.error(f"Error rendering ReDoc UI template: {e}", exc_info=True)
+        return Response(html, mimetype='text/html')

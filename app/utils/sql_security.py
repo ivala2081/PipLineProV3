@@ -37,9 +37,12 @@ class SQLSecurityValidator:
     
     # Allowed table names (whitelist approach)
     ALLOWED_TABLES = {
-        'transaction', 'user', 'option', 'exchange_rate', 
-        'psp_track', 'daily_balance', 'audit_log', 'user_session',
-        'user_settings', 'employee', 'reconciliation'
+        'transactions', 'users', 'options', 'exchange_rates', 
+        'psp_track', 'daily_balance', 'audit_logs', 'user_sessions',
+        'user_settings', 'employee', 'reconciliation', 'expenses',
+        'expense_budgets', 'login_attempts', 'psp_commission_rates',
+        'password_reset_tokens', 'trust_wallets', 'trust_wallet_transactions',
+        'admin_section_permissions', 'monthly_currency_summaries'
     }
     
     # Allowed column names (whitelist approach)

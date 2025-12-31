@@ -105,8 +105,10 @@ def settings_dropdowns():
                     flash('This option already exists.', 'error')
                     return redirect(url_for('settings.settings_dropdowns'))
                 
-                # Create new option
+                # Create new option with UUID
+                import uuid
                 option = Option(
+                    id=str(uuid.uuid4()),
                     field_name=field_name,
                     value=value,
                     commission_rate=commission_decimal

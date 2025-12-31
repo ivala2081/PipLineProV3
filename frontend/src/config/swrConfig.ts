@@ -26,67 +26,60 @@ export const swrConfig: SWRConfiguration = {
 };
 
 // Query keys factory for consistent key management
+// Use relative paths (without /api/v1 prefix) since api client already has baseUrl
 export const queryKeys = {
   // Dashboard queries
   dashboard: {
-    stats: (range: string = 'all') => `/api/v1/analytics/dashboard/stats?range=${range}`,
-    topPerformers: (range: string = 'all') => `/api/v1/analytics/top-performers?range=${range}`,
-    revenueTrends: (range: string = 'all') => `/api/v1/analytics/revenue/trends?range=${range}`,
+    stats: (range: string = 'all') => `/analytics/dashboard/stats?range=${range}`,
+    topPerformers: (range: string = 'all') => `/analytics/top-performers?range=${range}`,
+    revenueTrends: (range: string = 'all') => `/analytics/revenue/trends?range=${range}`,
   },
   
   // Analytics queries
   analytics: {
-    clients: (range: string) => `/api/v1/analytics/clients/analytics?range=${range}`,
-    commission: (range: string) => `/api/v1/analytics/commission/analytics?range=${range}`,
-    volumeAnalysis: (range: string) => `/api/v1/analytics/transactions/volume-analysis?range=${range}`,
-    systemPerformance: () => '/api/v1/analytics/system/performance',
-    dataQuality: () => '/api/v1/analytics/data/quality',
-    integrationStatus: () => '/api/v1/analytics/integration/status',
-    securityMetrics: () => '/api/v1/analytics/security/metrics',
-    ledgerData: (days: number) => `/api/v1/analytics/ledger-data?days=${days}`,
+    clients: (range: string) => `/analytics/clients/analytics?range=${range}`,
+    commission: (range: string) => `/analytics/commission/analytics?range=${range}`,
+    volumeAnalysis: (range: string) => `/analytics/transactions/volume-analysis?range=${range}`,
+    systemPerformance: () => '/analytics/system/performance',
+    dataQuality: () => '/analytics/data/quality',
+    integrationStatus: () => '/analytics/integration/status',
+    securityMetrics: () => '/analytics/security/metrics',
+    ledgerData: (days: number) => `/analytics/ledger-data?days=${days}`,
   },
   
   // Transaction queries
   transactions: {
-    all: (params?: any) => `/api/v1/transactions?${new URLSearchParams(params)}`,
-    clients: () => '/api/v1/transactions/clients',
-    dropdownOptions: () => '/api/v1/transactions/dropdown-options',
-    pspSummaryStats: () => '/api/v1/transactions/psp_summary_stats',
+    all: (params?: any) => `/transactions?${new URLSearchParams(params)}`,
+    clients: () => '/transactions/clients',
+    dropdownOptions: () => '/transactions/dropdown-options',
+    pspSummaryStats: () => '/transactions/psp_summary_stats',
   },
   
   // User queries
   users: {
-    settings: () => '/api/v1/users/settings',
-    profile: () => '/api/v1/users/profile',
+    settings: () => '/users/settings',
+    profile: () => '/users/profile',
   },
   
   // Auth queries
   auth: {
-    check: () => '/api/v1/auth/check',
-    csrfToken: () => '/api/v1/auth/csrf-token',
+    check: () => '/auth/check',
+    csrfToken: () => '/auth/csrf-token',
   },
   
   // Exchange rates queries
   exchangeRates: {
-    all: () => '/api/exchange-rates',
-    refresh: () => '/api/exchange-rates/refresh',
+    all: () => '/exchange-rates/rates',
+    refresh: () => '/exchange-rates/refresh',
   },
 } as const;
 
-// Fetcher function for SWR
+// Fetcher function for SWR - uses api client to avoid double /api/v1
 export const fetcher = async (url: string) => {
-  const response = await fetch(url, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  
-  return response.json();
+  // Import api client dynamically to avoid circular dependencies
+  const { api } = await import('../utils/apiClient');
+  const response = await api.get(url);
+  return response.data;
 };
 
 export default swrConfig;

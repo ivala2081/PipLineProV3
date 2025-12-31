@@ -278,11 +278,19 @@ export default function Login() {
     setPasswordStrength(calculatePasswordStrength(value))
   }
 
-  // Handle caps lock detection on key down
+  // Handle caps lock detection on key down and Enter key submission
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.getModifierState) {
       const capsLock = e.getModifierState('CapsLock')
       setShowCapsLockWarning(capsLock)
+    }
+    // Submit form on Enter key
+    if (e.key === 'Enter' && !isLoading && !isLocked && username && password && isOnline) {
+      e.preventDefault()
+      const form = e.currentTarget.closest('form')
+      if (form) {
+        form.requestSubmit()
+      }
     }
   }
 

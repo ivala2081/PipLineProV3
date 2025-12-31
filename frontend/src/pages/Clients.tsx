@@ -40,7 +40,13 @@ import {
   Info,
   Settings,
   CalendarDays,
-  ChevronDown
+  ChevronDown,
+  HelpCircle,
+  ChevronUp,
+  ChevronRight,
+  Sparkles,
+  Banknote,
+  Wallet
 } from 'lucide-react';
 import {
   BarChart as RechartsBarChart,
@@ -95,6 +101,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { FormField } from '../components/ui/form-field';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Tooltip } from '../components/ui/tooltip';
 import StandardMetricsCard from '../components/StandardMetricsCard';
 import MetricCard from '../components/MetricCard';
 import { ClientsPageSkeleton } from '../components/EnhancedSkeletonLoaders';
@@ -294,8 +301,13 @@ export default function Clients() {
   // State for daily summary modal
   const [showDailySummaryModal, setShowDailySummaryModal] = useState(false);
   const [dailySummaryData, setDailySummaryData] = useState<DailySummary | null>(null);
+  const [previousDaySummaryData, setPreviousDaySummaryData] = useState<DailySummary | null>(null);
   const [dailySummaryLoading, setDailySummaryLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
+  const [expandedBreakdowns, setExpandedBreakdowns] = useState({
+    psp: false,
+    paymentMethods: false
+  });
   
   // State for daily gross balances (deposits - withdrawals, before commission)
   const [dailyGrossBalances, setDailyGrossBalances] = useState<Record<string, { tl: number; usd: number; rate: number }>>({});
@@ -875,10 +887,29 @@ setClients(transformedData);
           });
         }
         return data;
+      } else {
+        // API call failed - use fallback static options
+        console.warn('⚠️ Dropdown options API failed, using fallback values');
+        setDropdownOptions({
+          currencies: ['TL', 'USD', 'EUR'],
+          payment_methods: ['Bank', 'Credit card', 'Tether'],
+          categories: ['DEP', 'WD'],
+          psps: [],
+          companies: [],
+        });
+        return {};
       }
-      return {};
     } catch (error) {
       console.error('Error fetching dropdown options:', error);
+      // Use fallback static options on error
+      console.warn('⚠️ Using fallback dropdown options due to error');
+      setDropdownOptions({
+        currencies: ['TL', 'USD', 'EUR'],
+        payment_methods: ['Bank', 'Credit card', 'Tether'],
+        categories: ['DEP', 'WD'],
+        psps: [],
+        companies: [],
+      });
       return {};
     }
   };
@@ -2769,16 +2800,49 @@ return breakdown;
       setDailySummaryLoading(true);
       setSelectedDate(date);
       
-      // Note: This endpoint is on transactions_bp which has no /api/v1 prefix, so use direct fetch
-      const response = await fetch(`/api/summary/${date}`, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      // Calculate previous day
+      const currentDate = new Date(date);
+      const previousDate = new Date(currentDate);
+      previousDate.setDate(previousDate.getDate() - 1);
+      const previousDateStr = previousDate.toISOString().split('T')[0];
       
-      if (response.ok) {
-        const data = await response.json();
+      // Fetch both current and previous day summaries in parallel
+      const [currentResponse, previousResponse] = await Promise.all([
+        fetch(`/api/summary/${date}`, {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+        fetch(`/api/summary/${previousDateStr}`, {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }).catch(() => null) // Ignore errors for previous day
+      ]);
+      
+      // Process previous day data if available
+      if (previousResponse && previousResponse.ok) {
+        try {
+          const prevData = await previousResponse.json();
+          const normalizedPrevData: DailySummary = {
+            ...prevData,
+            usd_rate: prevData.usd_rate !== null && prevData.usd_rate !== undefined 
+              ? (typeof prevData.usd_rate === 'number' ? prevData.usd_rate : Number(prevData.usd_rate))
+              : null,
+            total_deposits_tl: prevData.total_deposits_tl !== undefined ? Number(prevData.total_deposits_tl) : 0,
+            total_withdrawals_tl: prevData.total_withdrawals_tl !== undefined ? Number(prevData.total_withdrawals_tl) : 0,
+            total_commission_tl: prevData.total_commission_tl !== undefined ? Number(prevData.total_commission_tl) : 0,
+          };
+          setPreviousDaySummaryData(normalizedPrevData);
+        } catch (e) {
+          console.warn('Failed to parse previous day summary:', e);
+          setPreviousDaySummaryData(null);
+        }
+      } else {
+        setPreviousDaySummaryData(null);
+      }
+      
+      // Process current day data
+      if (currentResponse.ok) {
+        const data = await currentResponse.json();
         
         // Debug: Log full API response to verify data
         console.log('📊 Daily Summary API Response:', {
@@ -2828,9 +2892,10 @@ return breakdown;
         setShowDailySummaryModal(true);
       } else {
         // Handle non-200 responses
-        console.warn('⚠️ Daily Summary API returned non-OK status:', response.status);
+        console.warn('⚠️ Daily Summary API returned non-OK status:', currentResponse.status);
+        setPreviousDaySummaryData(null);
         try {
-          const errorData = await response.json();
+          const errorData = await currentResponse.json();
           console.error('❌ Error data:', errorData);
         } catch (parseError) {
           console.error('❌ Failed to parse error response:', parseError);
@@ -4740,22 +4805,92 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={closeDailySummaryModal}
-                  className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors duration-200'
-                >
-                  <X className='h-4 w-4 text-gray-600' />
-                </button>
+                <div className='flex items-center gap-2'>
+                  {!dailySummaryLoading && dailySummaryData && (
+                    <Tooltip content="Export daily summary as CSV">
+                      <button
+                        onClick={() => {
+                          // Export daily summary to CSV
+                          const csvRows = [];
+                          csvRows.push(['Daily Summary', dailySummaryData.date_str]);
+                          csvRows.push([]);
+                          csvRows.push(['Metric', 'Value (TRY)', 'Value (USD)']);
+                          csvRows.push(['Total Deposits', dailySummaryData.total_deposits_tl || 0, dailySummaryData.total_deposits_usd || 0]);
+                          csvRows.push(['Total Withdrawals', dailySummaryData.total_withdrawals_tl || 0, dailySummaryData.total_withdrawals_usd || 0]);
+                          csvRows.push(['Net Balance', (dailySummaryData.total_deposits_tl || 0) - (dailySummaryData.total_withdrawals_tl || 0), (dailySummaryData.total_deposits_usd || 0) - (dailySummaryData.total_withdrawals_usd || 0)]);
+                          csvRows.push(['Total Commission', dailySummaryData.total_commission_tl || 0, dailySummaryData.total_commission_usd || 0]);
+                          csvRows.push(['Transaction Count', dailySummaryData.transaction_count || 0, '']);
+                          csvRows.push(['Unique Clients', dailySummaryData.unique_clients || 0, '']);
+                          csvRows.push([]);
+                          csvRows.push(['Payment Methods']);
+                          csvRows.push(['Method', 'Amount (TRY)', 'Amount (USD)', 'Count']);
+                          if (dailySummaryData.payment_method_totals?.BANK) {
+                            csvRows.push(['Bank', dailySummaryData.payment_method_totals.BANK.amount_tl || 0, dailySummaryData.payment_method_totals.BANK.amount_usd || 0, dailySummaryData.payment_method_totals.BANK.count || 0]);
+                          }
+                          if (dailySummaryData.payment_method_totals?.CC) {
+                            csvRows.push(['Credit Card', dailySummaryData.payment_method_totals.CC.amount_tl || 0, dailySummaryData.payment_method_totals.CC.amount_usd || 0, dailySummaryData.payment_method_totals.CC.count || 0]);
+                          }
+                          if (dailySummaryData.payment_method_totals?.TETHER) {
+                            csvRows.push(['Tether', 0, dailySummaryData.payment_method_totals.TETHER.amount_usd || 0, dailySummaryData.payment_method_totals.TETHER.count || 0]);
+                          }
+                          
+                          const csvContent = csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+                          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                          const link = document.createElement('a');
+                          const url = URL.createObjectURL(blob);
+                          link.setAttribute('href', url);
+                          link.setAttribute('download', `daily_summary_${dailySummaryData.date}.csv`);
+                          link.style.visibility = 'hidden';
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className='w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center hover:bg-blue-200 transition-colors duration-200'
+                        title="Export to CSV"
+                      >
+                        <Download className='h-4 w-4 text-blue-600' />
+                      </button>
+                    </Tooltip>
+                  )}
+                  <button
+                    onClick={closeDailySummaryModal}
+                    className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center hover:bg-gray-200 transition-colors duration-200'
+                  >
+                    <X className='h-4 w-4 text-gray-600' />
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Modal Content */}
             <div className='p-6 overflow-y-auto max-h-[calc(90vh-100px)]'>
               {dailySummaryLoading ? (
-                <div className='flex items-center justify-center py-12'>
-                  <div className='text-center'>
-                    <div className='animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-gray-600 mx-auto mb-3'></div>
-                    <p className='text-gray-600 text-sm'>{t('daily_summary.loading_summary')}</p>
+                <div className='space-y-6'>
+                  {/* Loading Skeleton */}
+                  <div className='grid grid-cols-1 md:grid-cols-3 gap-5'>
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className='bg-gray-100 border-2 border-gray-200 rounded-xl p-6 animate-pulse'>
+                        <div className='h-4 bg-gray-300 rounded w-24 mb-4'></div>
+                        <div className='h-10 bg-gray-300 rounded w-32 mb-3'></div>
+                        <div className='h-3 bg-gray-200 rounded w-full mb-2'></div>
+                        <div className='h-3 bg-gray-200 rounded w-3/4'></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className='bg-gray-100 border-2 border-gray-200 rounded-xl p-4 animate-pulse'>
+                        <div className='h-3 bg-gray-300 rounded w-20 mb-3'></div>
+                        <div className='h-8 bg-gray-300 rounded w-24'></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className='flex items-center justify-center py-8'>
+                    <div className='text-center'>
+                      <div className='animate-spin rounded-full h-10 w-10 border-3 border-blue-200 border-t-blue-600 mx-auto mb-3'></div>
+                      <p className='text-gray-600 text-sm font-medium'>{t('daily_summary.loading_summary')}</p>
+                      <p className='text-gray-500 text-xs mt-1'>Fetching daily summary data...</p>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -4876,323 +5011,742 @@ Mike Johnson,Global Inc,TR1122334455,Wire Transfer,DEP,5000.00,100.00,4900.00,GB
                       return sum + Math.abs(amount);
                     }, 0);
 
+                    // Calculate comparison with previous day
+                    const calculateChange = (current: number, previous: number): { value: number; percentage: number; isPositive: boolean } => {
+                      if (!previous || previous === 0) {
+                        return { value: 0, percentage: 0, isPositive: current >= 0 };
+                      }
+                      const change = current - previous;
+                      const percentage = (change / Math.abs(previous)) * 100;
+                      return {
+                        value: change,
+                        percentage: Math.abs(percentage),
+                        isPositive: change >= 0
+                      };
+                    };
+
+                    const prevDeposits = previousDaySummaryData?.total_deposits_tl || 0;
+                    const prevWithdrawals = previousDaySummaryData?.total_withdrawals_tl || 0;
+                    const prevNetBalance = prevDeposits - prevWithdrawals;
+                    const prevTransactionCount = previousDaySummaryData?.transaction_count || 0;
+
+                    const depositsChange = calculateChange(depositsTL, prevDeposits);
+                    const withdrawalsChange = calculateChange(withdrawalsTL, prevWithdrawals);
+                    const netBalanceChange = calculateChange(netBalance, prevNetBalance);
+                    const transactionCountChange = calculateChange(dailyMetrics.transactionCount, prevTransactionCount);
+
+                    // Calculate insights
+                    const bankAmount = dailySummaryData.payment_method_totals?.BANK?.amount_tl || 0;
+                    const ccAmount = dailySummaryData.payment_method_totals?.CC?.amount_tl || 0;
+                    const tetherAmountUSD = dailySummaryData.payment_method_totals?.TETHER?.amount_usd || 0;
+                    const totalPaymentMethods = bankAmount + ccAmount + (tetherAmountUSD * usdRate);
+                    const bankPercentage = totalPaymentMethods > 0 ? (bankAmount / totalPaymentMethods) * 100 : 0;
+                    const ccPercentage = totalPaymentMethods > 0 ? (ccAmount / totalPaymentMethods) * 100 : 0;
+                    const tetherPercentage = totalPaymentMethods > 0 ? ((tetherAmountUSD * usdRate) / totalPaymentMethods) * 100 : 0;
+
+                    // Prepare chart data for payment methods
+                    const paymentMethodChartData = [
+                      { name: 'Bank Transfer', value: bankAmount, percentage: bankPercentage, color: '#3b82f6' },
+                      { name: 'Credit Card', value: ccAmount, percentage: ccPercentage, color: '#8b5cf6' },
+                      { name: 'Tether', value: tetherAmountUSD * usdRate, percentage: tetherPercentage, color: '#f59e0b' },
+                    ].filter(item => item.value > 0);
+
+                    // Generate key insights
+                    const insights = [];
+                    if (netBalance > 0) {
+                      insights.push({ type: 'positive', text: `Net positive balance of ${formatCurrency(netBalance, '₺')}` });
+                    } else if (netBalance < 0) {
+                      insights.push({ type: 'warning', text: `Net negative balance of ${formatCurrency(Math.abs(netBalance), '₺')}` });
+                    }
+                    if (commissionRate > 0) {
+                      insights.push({ type: 'info', text: `Commission rate: ${commissionRate.toFixed(2)}% of net balance` });
+                    }
+                    if (topClients.length > 0) {
+                      insights.push({ type: 'info', text: `Top client: ${topClients[0].name} (${formatCurrency(topClients[0].total, '₺')})` });
+                    }
+                    if (dailyMetrics.transactionCount > 0) {
+                      insights.push({ type: 'info', text: `${dailyMetrics.transactionCount} transactions across ${dailyMetrics.uniqueClients} clients` });
+                    }
+
                     return (
                       <>
-                        {/* Primary Metrics */}
-                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-                          {/* Total Deposits */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-5'>
-                            <div className='flex items-center justify-between mb-2.5'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_dep')}</span>
-                              <TrendingUp className='h-4 w-4 text-gray-400' />
+                        {/* Key Insights Section */}
+                        {insights.length > 0 && (
+                          <UnifiedCard variant="outlined" className="mb-6">
+                            <div className='flex items-center gap-2 mb-4'>
+                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                <Sparkles className='h-4 w-4 text-gray-600' />
+                              </div>
+                              <h3 className='text-base font-semibold text-gray-900'>Key Insights</h3>
                             </div>
-                            <p className='text-3xl font-semibold text-gray-900 mb-1'>
+                            <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+                              {insights.map((insight, idx) => (
+                                <div key={idx} className='flex items-start gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200'>
+                                  {insight.type === 'positive' && <CheckCircle className='h-4 w-4 text-green-600 mt-0.5 flex-shrink-0' />}
+                                  {insight.type === 'warning' && <AlertCircle className='h-4 w-4 text-red-600 mt-0.5 flex-shrink-0' />}
+                                  {insight.type === 'info' && <Info className='h-4 w-4 text-gray-600 mt-0.5 flex-shrink-0' />}
+                                  <p className='text-sm text-gray-700'>{insight.text}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </UnifiedCard>
+                        )}
+
+                        {/* Primary Metrics */}
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-5 mb-6'>
+                          {/* Total Deposits */}
+                          <UnifiedCard variant="elevated" className="hover:shadow-md transition-shadow">
+                            <div className='flex items-center justify-between mb-3'>
+                              <div className='flex items-center gap-2'>
+                                <Tooltip content="Total amount of money deposited today (Money In)">
+                                  <div className='flex items-center gap-2'>
+                                    <span className='text-sm font-semibold text-gray-700'>Money In</span>
+                                    <HelpCircle className='h-4 w-4 text-gray-400' />
+                                  </div>
+                                </Tooltip>
+                              </div>
+                              <div className='w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center'>
+                                <TrendingUp className='h-5 w-5 text-green-600' />
+                              </div>
+                            </div>
+                            <p className='text-4xl font-bold text-gray-900 mb-2'>
                               {formatCurrency(dailySummaryData.total_deposits_tl || dailyMetrics.totalDeposits, '₺')}
                             </p>
-                            <div className='flex flex-col gap-1 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100'>
-                              <span>TRY: {formatCurrency(dailySummaryData.total_deposits_tl || dailyMetrics.totalDeposits, '₺')}</span>
-                              <span>USD: ${(dailySummaryData.total_deposits_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            {previousDaySummaryData && depositsChange.percentage > 0 && (
+                              <div className={`flex items-center gap-1.5 mb-2 px-2 py-1 rounded-lg ${
+                                depositsChange.isPositive ? 'bg-green-50' : 'bg-red-50'
+                              }`}>
+                                {depositsChange.isPositive ? (
+                                  <TrendingUp className='h-3.5 w-3.5 text-green-600' />
+                                ) : (
+                                  <TrendingDown className='h-3.5 w-3.5 text-red-600' />
+                                )}
+                                <span className={`text-xs font-semibold ${
+                                  depositsChange.isPositive ? 'text-green-700' : 'text-red-700'
+                                }`}>
+                                  {depositsChange.isPositive ? '+' : '-'}{depositsChange.percentage.toFixed(1)}% vs yesterday
+                                </span>
+                              </div>
+                            )}
+                            <div className='flex flex-col gap-1.5 text-xs text-gray-600 mt-3 pt-3 border-t border-gray-200'>
+                              <div className='flex justify-between'>
+                                <span className='font-medium'>TRY:</span>
+                                <span className='font-semibold'>{formatCurrency(dailySummaryData.total_deposits_tl || dailyMetrics.totalDeposits, '₺')}</span>
+                              </div>
+                              <div className='flex justify-between'>
+                                <span className='font-medium'>USD:</span>
+                                <span className='font-semibold'>${(dailySummaryData.total_deposits_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
                             </div>
-                          </div>
+                          </UnifiedCard>
 
                           {/* Total Withdrawals */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-5'>
-                            <div className='flex items-center justify-between mb-2.5'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_wd')}</span>
-                              <TrendingDown className='h-4 w-4 text-gray-400' />
+                          <UnifiedCard variant="elevated" className="hover:shadow-md transition-shadow">
+                            <div className='flex items-center justify-between mb-3'>
+                              <div className='flex items-center gap-2'>
+                                <Tooltip content="Total amount of money withdrawn today (Money Out)">
+                                  <div className='flex items-center gap-2'>
+                                    <span className='text-sm font-semibold text-gray-700'>Money Out</span>
+                                    <HelpCircle className='h-4 w-4 text-gray-400' />
+                                  </div>
+                                </Tooltip>
+                              </div>
+                              <div className='w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center'>
+                                <TrendingDown className='h-5 w-5 text-red-600' />
+                              </div>
                             </div>
-                            <p className='text-3xl font-semibold text-gray-900 mb-1'>
+                            <p className='text-4xl font-bold text-gray-900 mb-2'>
                               {formatCurrency(dailySummaryData.total_withdrawals_tl || dailyMetrics.totalWithdrawals, '₺')}
                             </p>
-                            <div className='flex flex-col gap-1 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100'>
-                              <span>TRY: {formatCurrency(dailySummaryData.total_withdrawals_tl || dailyMetrics.totalWithdrawals, '₺')}</span>
-                              <span>USD: ${(dailySummaryData.total_withdrawals_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            {previousDaySummaryData && withdrawalsChange.percentage > 0 && (
+                              <div className={`flex items-center gap-1.5 mb-2 px-2 py-1 rounded-lg ${
+                                withdrawalsChange.isPositive ? 'bg-red-50' : 'bg-green-50'
+                              }`}>
+                                {withdrawalsChange.isPositive ? (
+                                  <TrendingUp className='h-3.5 w-3.5 text-red-600' />
+                                ) : (
+                                  <TrendingDown className='h-3.5 w-3.5 text-green-600' />
+                                )}
+                                <span className={`text-xs font-semibold ${
+                                  withdrawalsChange.isPositive ? 'text-red-700' : 'text-green-700'
+                                }`}>
+                                  {withdrawalsChange.isPositive ? '+' : '-'}{withdrawalsChange.percentage.toFixed(1)}% vs yesterday
+                                </span>
+                              </div>
+                            )}
+                            <div className='flex flex-col gap-1.5 text-xs text-gray-600 mt-3 pt-3 border-t border-gray-200'>
+                              <div className='flex justify-between'>
+                                <span className='font-medium'>TRY:</span>
+                                <span className='font-semibold'>{formatCurrency(dailySummaryData.total_withdrawals_tl || dailyMetrics.totalWithdrawals, '₺')}</span>
+                              </div>
+                              <div className='flex justify-between'>
+                                <span className='font-medium'>USD:</span>
+                                <span className='font-semibold'>${(dailySummaryData.total_withdrawals_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
                             </div>
-                          </div>
+                          </UnifiedCard>
 
                           {/* Net Balance */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-5'>
-                            <div className='flex items-center justify-between mb-2.5'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.net')}</span>
-                              <Activity className='h-4 w-4 text-gray-400' />
+                          <UnifiedCard variant="elevated" className="hover:shadow-md transition-shadow">
+                            <div className='flex items-center justify-between mb-3'>
+                              <div className='flex items-center gap-2'>
+                                <Tooltip content="Net balance = Deposits - Withdrawals. Shows if you gained or lost money today">
+                                  <div className='flex items-center gap-2'>
+                                    <span className='text-sm font-semibold text-gray-700'>Net Balance</span>
+                                    <HelpCircle className='h-4 w-4 text-gray-400' />
+                                  </div>
+                                </Tooltip>
+                              </div>
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                netBalance >= 0 ? 'bg-blue-50' : 'bg-orange-50'
+                              }`}>
+                                <Activity className={`h-5 w-5 ${netBalance >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+                              </div>
                             </div>
-                            <p className={`text-3xl font-semibold mb-1 ${netBalance >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                            <p className={`text-4xl font-bold mb-2 ${netBalance >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
                               {formatCurrency(netBalance, '₺')}
                             </p>
-                            <div className='flex flex-col gap-1 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100'>
-                              <span>TRY: {formatCurrency(netBalance, '₺')}</span>
-                              <span>USD: ${((dailySummaryData.total_deposits_usd || 0) - (dailySummaryData.total_withdrawals_usd || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            {previousDaySummaryData && netBalanceChange.percentage > 0 && (
+                              <div className={`flex items-center gap-1.5 mb-2 px-2 py-1 rounded-lg ${
+                                netBalanceChange.isPositive ? 'bg-green-50' : 'bg-red-50'
+                              }`}>
+                                {netBalanceChange.isPositive ? (
+                                  <TrendingUp className='h-3.5 w-3.5 text-green-600' />
+                                ) : (
+                                  <TrendingDown className='h-3.5 w-3.5 text-red-600' />
+                                )}
+                                <span className={`text-xs font-semibold ${
+                                  netBalanceChange.isPositive ? 'text-green-700' : 'text-red-700'
+                                }`}>
+                                  {netBalanceChange.isPositive ? '+' : '-'}{netBalanceChange.percentage.toFixed(1)}% vs yesterday
+                                </span>
+                              </div>
+                            )}
+                            <div className='flex flex-col gap-1.5 text-xs text-gray-600 mt-3 pt-3 border-t border-gray-200'>
+                              <div className='flex justify-between'>
+                                <span className='font-medium'>TRY:</span>
+                                <span className='font-semibold'>{formatCurrency(netBalance, '₺')}</span>
+                              </div>
+                              <div className='flex justify-between'>
+                                <span className='font-medium'>USD:</span>
+                                <span className='font-semibold'>${((dailySummaryData.total_deposits_usd || 0) - (dailySummaryData.total_withdrawals_usd || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            </div>
+                          </UnifiedCard>
+                        </div>
+
+                        {/* Payment Methods Breakdown with Chart */}
+                        <div className='mb-6'>
+                          <div className='flex items-center gap-2 mb-4'>
+                            <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                              <CreditCard className='h-4 w-4 text-gray-600' />
+                            </div>
+                            <h3 className='text-lg font-semibold text-gray-900'>Payment Methods</h3>
+                            <Tooltip content="Breakdown of transactions by payment method type">
+                              <HelpCircle className='h-4 w-4 text-gray-400' />
+                            </Tooltip>
+                          </div>
+                          
+                          <div className='grid grid-cols-1 lg:grid-cols-3 gap-5'>
+                            {/* Chart Section */}
+                            {paymentMethodChartData.length > 0 && (
+                              <UnifiedCard variant="outlined">
+                                <h4 className='text-sm font-semibold text-gray-700 mb-4'>Distribution</h4>
+                                <ResponsiveContainer width="100%" height={200}>
+                                  <RechartsPieChart>
+                                    <Pie
+                                      data={paymentMethodChartData}
+                                      cx="50%"
+                                      cy="50%"
+                                      labelLine={false}
+                                      label={({ name, percentage }) => `${name}: ${percentage.toFixed(1)}%`}
+                                      outerRadius={70}
+                                      fill="#8884d8"
+                                      dataKey="value"
+                                    >
+                                      {paymentMethodChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                      ))}
+                                    </Pie>
+                                    <Tooltip 
+                                      formatter={(value: number) => formatCurrency(value, '₺')}
+                                      contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                                    />
+                                  </RechartsPieChart>
+                                </ResponsiveContainer>
+                              </UnifiedCard>
+                            )}
+
+                            {/* Payment Method Cards */}
+                            <div className='lg:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-4'>
+                              {/* BANK */}
+                              <UnifiedCard variant="outlined" padding="sm">
+                                <div className='flex items-center justify-between mb-2'>
+                                  <Tooltip content="Bank transfers and wire transfers">
+                                    <div className='flex items-center gap-1.5'>
+                                      <div className='w-6 h-6 bg-blue-50 rounded flex items-center justify-center'>
+                                        <Banknote className='h-3.5 w-3.5 text-blue-600' />
+                                      </div>
+                                      <span className='text-xs font-semibold text-gray-700'>Bank</span>
+                                    </div>
+                                  </Tooltip>
+                                </div>
+                                <p className='text-2xl font-bold text-gray-900 mb-1'>
+                                  {formatCurrency(bankAmount, '₺')}
+                                </p>
+                                {bankPercentage > 0 && (
+                                  <div className='mt-2'>
+                                    <div className='flex items-center justify-between text-xs mb-1'>
+                                      <span className='text-gray-600'>Share</span>
+                                      <span className='font-semibold text-gray-700'>{bankPercentage.toFixed(1)}%</span>
+                                    </div>
+                                    <div className='w-full bg-gray-200 rounded-full h-2'>
+                                      <div 
+                                        className='bg-blue-600 h-2 rounded-full transition-all' 
+                                        style={{ width: `${bankPercentage}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </UnifiedCard>
+
+                              {/* CC */}
+                              <UnifiedCard variant="outlined" padding="sm">
+                                <div className='flex items-center justify-between mb-2'>
+                                  <Tooltip content="Credit card and debit card transactions">
+                                    <div className='flex items-center gap-1.5'>
+                                      <div className='w-6 h-6 bg-purple-50 rounded flex items-center justify-center'>
+                                        <CreditCard className='h-3.5 w-3.5 text-purple-600' />
+                                      </div>
+                                      <span className='text-xs font-semibold text-gray-700'>Credit Card</span>
+                                    </div>
+                                  </Tooltip>
+                                </div>
+                                <p className='text-2xl font-bold text-gray-900 mb-1'>
+                                  {formatCurrency(ccAmount, '₺')}
+                                </p>
+                                {ccPercentage > 0 && (
+                                  <div className='mt-2'>
+                                    <div className='flex items-center justify-between text-xs mb-1'>
+                                      <span className='text-gray-600'>Share</span>
+                                      <span className='font-semibold text-gray-700'>{ccPercentage.toFixed(1)}%</span>
+                                    </div>
+                                    <div className='w-full bg-gray-200 rounded-full h-2'>
+                                      <div 
+                                        className='bg-purple-600 h-2 rounded-full transition-all' 
+                                        style={{ width: `${ccPercentage}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </UnifiedCard>
+
+                              {/* TETHER */}
+                              <UnifiedCard variant="outlined" padding="sm">
+                                <div className='flex items-center justify-between mb-2'>
+                                  <Tooltip content="Tether (USDT) cryptocurrency transactions">
+                                    <div className='flex items-center gap-1.5'>
+                                      <div className='w-6 h-6 bg-orange-50 rounded flex items-center justify-center'>
+                                        <Wallet className='h-3.5 w-3.5 text-orange-600' />
+                                      </div>
+                                      <span className='text-xs font-semibold text-gray-700'>Tether</span>
+                                    </div>
+                                  </Tooltip>
+                                </div>
+                                <p className='text-2xl font-bold text-gray-900 mb-1'>
+                                  ${tetherAmountUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                                {tetherPercentage > 0 && (
+                                  <div className='mt-2'>
+                                    <div className='flex items-center justify-between text-xs mb-1'>
+                                      <span className='text-gray-600'>Share</span>
+                                      <span className='font-semibold text-gray-700'>{tetherPercentage.toFixed(1)}%</span>
+                                    </div>
+                                    <div className='w-full bg-gray-200 rounded-full h-2'>
+                                      <div 
+                                        className='bg-orange-600 h-2 rounded-full transition-all' 
+                                        style={{ width: `${tetherPercentage}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </UnifiedCard>
+
+                              {/* Commission - Full Width on Mobile */}
+                              <UnifiedCard variant="outlined" className="md:col-span-3">
+                                <div className='flex items-center justify-between mb-2'>
+                                  <Tooltip content="Total commission fees deducted from transactions">
+                                    <div className='flex items-center gap-1.5'>
+                                      <div className='w-6 h-6 bg-gray-100 rounded flex items-center justify-center'>
+                                        <DollarSign className='h-3.5 w-3.5 text-gray-600' />
+                                      </div>
+                                      <span className='text-sm font-semibold text-gray-700'>Total Commission</span>
+                                    </div>
+                                  </Tooltip>
+                                </div>
+                                <div className='flex items-end justify-between'>
+                                  <div>
+                                    <p className='text-3xl font-bold text-gray-900 mb-1'>
+                                      {formatCurrency(totalCommission, '₺')}
+                                    </p>
+                                    <div className='flex items-center gap-2 mt-2'>
+                                      <span className='text-xs text-gray-600'>{commissionRate.toFixed(2)}% of net</span>
+                                    </div>
+                                  </div>
+                                  {commissionRate > 0 && (
+                                    <div className='text-right'>
+                                      <div className='text-xs text-gray-500 mb-1'>Commission Rate</div>
+                                      <div className='text-lg font-bold text-gray-700'>{commissionRate.toFixed(2)}%</div>
+                                    </div>
+                                  )}
+                                </div>
+                              </UnifiedCard>
                             </div>
                           </div>
                         </div>
 
-                        {/* Breakdown (easy to scan) */}
-                        <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                          {/* TOTAL BANK */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_bank')}</span>
-                              <CreditCard className='h-4 w-4 text-gray-400' />
-                            </div>
-                            <p className='text-2xl font-semibold text-gray-900 mb-1'>
-                              {formatCurrency(dailySummaryData.payment_method_totals?.BANK?.amount_tl || 0, '₺')}
-                            </p>
-                          </div>
-
-                          {/* TOTAL CC */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.total_cc')}</span>
-                              <CreditCard className='h-4 w-4 text-gray-400' />
-                            </div>
-                            <p className='text-2xl font-semibold text-gray-900 mb-1'>
-                              {formatCurrency(dailySummaryData.payment_method_totals?.CC?.amount_tl || 0, '₺')}
-                            </p>
-                          </div>
-
-                          {/* TETHER */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.tether')}</span>
-                              <DollarSign className='h-4 w-4 text-gray-400' />
-                            </div>
-                            <p className='text-2xl font-semibold text-gray-900 mb-1'>
-                              ${(dailySummaryData.payment_method_totals?.TETHER?.amount_usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </p>
-                          </div>
-
-                          {/* Total Commission */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.commission')}</span>
-                              <DollarSign className='h-4 w-4 text-gray-400' />
-                            </div>
-                            <p className='text-2xl font-semibold text-gray-900 mb-1'>
-                              {formatCurrency(totalCommission, '₺')}
-                            </p>
-                            <p className='text-xs text-gray-500 mt-2'>
-                              {commissionRate.toFixed(2)}% {t('daily_summary.of_net')}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* USD + Activity (secondary) */}
-                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                        {/* USD Metrics & Activity */}
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-5 mb-6'>
                           {/* Net Cash USD Without Commission */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.net_cash_usd')}</span>
-                              <DollarSign className='h-4 w-4 text-gray-400' />
+                          <UnifiedCard variant="elevated" className="hover:shadow-md transition-shadow">
+                            <div className='flex items-center justify-between mb-3'>
+                              <Tooltip content="Total USD value before deducting commission fees">
+                                <div className='flex items-center gap-2'>
+                                  <span className='text-sm font-semibold text-gray-700'>Net Cash (USD)</span>
+                                  <HelpCircle className='h-4 w-4 text-gray-400' />
+                                </div>
+                              </Tooltip>
+                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                <DollarSign className='h-4 w-4 text-gray-600' />
+                              </div>
                             </div>
-                            <p className={`text-2xl font-semibold mb-1 ${netCashUSDWithoutCommission >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                            <p className={`text-3xl font-bold mb-2 ${netCashUSDWithoutCommission >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
                               ${netCashUSDWithoutCommission.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
-                            <p className='text-xs text-gray-500 mt-2'>
-                              {t('daily_summary.without_commission')}
-                            </p>
-                          </div>
+                            <div className='mt-3 pt-3 border-t border-gray-200'>
+                              <p className='text-xs text-gray-500 flex items-center gap-1'>
+                                <Info className='h-3 w-3' />
+                                Before commission deduction
+                              </p>
+                            </div>
+                          </UnifiedCard>
 
                           {/* Net Cash USD With Commission */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.net_cash_usd_commission')}</span>
-                              <DollarSign className='h-4 w-4 text-gray-400' />
+                          <UnifiedCard variant="elevated" className="hover:shadow-md transition-shadow">
+                            <div className='flex items-center justify-between mb-3'>
+                              <Tooltip content="Total USD value after deducting commission fees (actual cash received)">
+                                <div className='flex items-center gap-2'>
+                                  <span className='text-sm font-semibold text-gray-700'>Net Cash (USD)</span>
+                                  <HelpCircle className='h-4 w-4 text-gray-400' />
+                                </div>
+                              </Tooltip>
+                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                <DollarSign className='h-4 w-4 text-gray-600' />
+                              </div>
                             </div>
-                            <p className={`text-2xl font-semibold mb-1 ${netCashUSDWithCommission >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                            <p className={`text-3xl font-bold mb-2 ${netCashUSDWithCommission >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
                               ${netCashUSDWithCommission.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
-                            <p className='text-xs text-gray-500 mt-2'>
-                              {t('daily_summary.with_commission')}
-                            </p>
-                          </div>
-
-                          {/* Statistics */}
-                          <div className='bg-white border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.activity')}</span>
-                              <Users className='h-4 w-4 text-gray-400' />
+                            <div className='mt-3 pt-3 border-t border-gray-200'>
+                              <p className='text-xs text-gray-500 flex items-center gap-1'>
+                                <Info className='h-3 w-3' />
+                                After commission deduction
+                              </p>
                             </div>
-                            <div className='space-y-1.5'>
-                              <div className='flex justify-between items-center text-sm'>
-                                <span className='text-gray-600'>{t('daily_summary.transactions')}</span>
-                                <span className='font-semibold text-gray-900'>{dailyMetrics.transactionCount}</span>
+                          </UnifiedCard>
+
+                          {/* Activity Statistics */}
+                          <UnifiedCard variant="elevated">
+                            <div className='flex items-center justify-between mb-4'>
+                              <Tooltip content="Transaction activity and client engagement metrics">
+                                <div className='flex items-center gap-2'>
+                                  <span className='text-sm font-semibold text-gray-700'>Activity</span>
+                                  <HelpCircle className='h-4 w-4 text-gray-400' />
+                                </div>
+                              </Tooltip>
+                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                <Users className='h-4 w-4 text-gray-600' />
                               </div>
-                              <div className='flex justify-between items-center text-sm'>
-                                <span className='text-gray-600'>{t('daily_summary.clients')}</span>
-                                <span className='font-semibold text-gray-900'>{dailyMetrics.uniqueClients}</span>
+                            </div>
+                            <div className='space-y-3'>
+                              <div className='flex justify-between items-center p-2 bg-gray-50 rounded-lg'>
+                                <div className='flex items-center gap-2'>
+                                  <FileText className='h-4 w-4 text-gray-500' />
+                                  <span className='text-sm text-gray-600'>{t('daily_summary.transactions')}</span>
+                                </div>
+                                <span className='text-lg font-bold text-gray-900'>{dailyMetrics.transactionCount}</span>
+                              </div>
+                              <div className='flex justify-between items-center p-2 bg-gray-50 rounded-lg'>
+                                <div className='flex items-center gap-2'>
+                                  <User className='h-4 w-4 text-gray-500' />
+                                  <span className='text-sm text-gray-600'>{t('daily_summary.clients')}</span>
+                                </div>
+                                <span className='text-lg font-bold text-gray-900'>{dailyMetrics.uniqueClients}</span>
                               </div>
                               {dailyMetrics.transactionCount > 0 && (
-                                <div className='flex justify-between items-center text-sm pt-1 border-t border-gray-100'>
-                                  <span className='text-gray-600'>{t('daily_summary.avg_value')}</span>
-                                  <span className='font-semibold text-gray-900'>
+                                <div className='flex justify-between items-center p-2 bg-gray-50 rounded-lg border-t border-gray-200'>
+                                  <div className='flex items-center gap-2'>
+                                    <BarChart className='h-4 w-4 text-gray-500' />
+                                    <span className='text-sm text-gray-600'>{t('daily_summary.avg_value')}</span>
+                                  </div>
+                                  <span className='text-lg font-bold text-gray-900'>
                                     {formatCurrency(avgTransactionValue, '₺')}
                                   </span>
                                 </div>
                               )}
+                              {previousDaySummaryData && transactionCountChange.percentage > 0 && (
+                                <div className='mt-2 pt-2 border-t border-gray-200'>
+                                  <div className='flex items-center justify-between px-2 py-1 rounded-lg bg-gray-50'>
+                                    <span className='text-xs text-gray-600'>vs yesterday</span>
+                                    <div className='flex items-center gap-1'>
+                                      {transactionCountChange.isPositive ? (
+                                        <TrendingUp className='h-3 w-3 text-green-600' />
+                                      ) : (
+                                        <TrendingDown className='h-3 w-3 text-red-600' />
+                                      )}
+                                      <span className={`text-xs font-semibold ${
+                                        transactionCountChange.isPositive ? 'text-green-700' : 'text-red-700'
+                                      }`}>
+                                        {transactionCountChange.isPositive ? '+' : ''}{transactionCountChange.value} ({transactionCountChange.isPositive ? '+' : ''}{transactionCountChange.percentage.toFixed(1)}%)
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
+                          </UnifiedCard>
                         </div>
 
                         {/* Secondary Metrics Row */}
-                        <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+                        <div className='grid grid-cols-1 md:grid-cols-3 gap-5 mb-6'>
                           {/* Exchange Rate */}
                           {dailySummaryData.usd_rate !== null && dailySummaryData.usd_rate !== undefined && (
-                            <div className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
-                              <div className='flex items-center justify-between mb-2'>
-                                <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.usd_exchange_rate')}</span>
-                                <DollarSign className='h-4 w-4 text-gray-400' />
+                            <UnifiedCard variant="outlined">
+                              <div className='flex items-center justify-between mb-3'>
+                                <Tooltip content="USD to TRY exchange rate used for currency conversions">
+                                  <div className='flex items-center gap-2'>
+                                    <span className='text-sm font-semibold text-gray-700'>USD Exchange Rate</span>
+                                    <HelpCircle className='h-4 w-4 text-gray-400' />
+                                  </div>
+                                </Tooltip>
+                                <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                  <DollarSign className='h-4 w-4 text-gray-600' />
+                                </div>
                               </div>
-                              <p className='text-xl font-semibold text-gray-900'>
+                              <p className='text-3xl font-bold text-gray-900'>
                                 {Number(dailySummaryData.usd_rate).toFixed(2)} ₺
                               </p>
-                            </div>
+                              <p className='text-xs text-gray-600 mt-2'>Per 1 USD</p>
+                            </UnifiedCard>
                           )}
 
                           {/* Currency Breakdown */}
-                          <div className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
-                            <div className='flex items-center justify-between mb-2'>
-                              <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.currency_distribution')}</span>
-                              <Globe className='h-4 w-4 text-gray-400' />
-                            </div>
-                            <div className='space-y-1.5'>
-                              <div className='flex justify-between items-center text-sm'>
-                                <span className='text-gray-600'>{t('daily_summary.try_volume')}</span>
-                                <span className='font-semibold text-gray-900'>{formatCurrency(tryVolume, '₺')}</span>
-                              </div>
-                              <div className='flex justify-between items-center text-sm'>
-                                <span className='text-gray-600'>{t('daily_summary.usd_volume')}</span>
-                                <span className='font-semibold text-gray-900'>${usdVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <UnifiedCard variant="outlined">
+                            <div className='flex items-center justify-between mb-3'>
+                              <Tooltip content="Transaction volume breakdown by currency">
+                                <div className='flex items-center gap-2'>
+                                  <span className='text-sm font-semibold text-gray-700'>Currency Volume</span>
+                                  <HelpCircle className='h-4 w-4 text-gray-400' />
+                                </div>
+                              </Tooltip>
+                              <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                <Globe className='h-4 w-4 text-gray-600' />
                               </div>
                             </div>
-                          </div>
+                            <div className='space-y-2'>
+                              <div className='flex justify-between items-center p-2 bg-gray-50 rounded-lg'>
+                                <span className='text-sm text-gray-600 flex items-center gap-1'>
+                                  <span className='font-semibold'>TRY:</span>
+                                  {t('daily_summary.try_volume')}
+                                </span>
+                                <span className='text-lg font-bold text-gray-900'>{formatCurrency(tryVolume, '₺')}</span>
+                              </div>
+                              <div className='flex justify-between items-center p-2 bg-gray-50 rounded-lg'>
+                                <span className='text-sm text-gray-600 flex items-center gap-1'>
+                                  <span className='font-semibold'>USD:</span>
+                                  {t('daily_summary.usd_volume')}
+                                </span>
+                                <span className='text-lg font-bold text-gray-900'>${usdVolume.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            </div>
+                          </UnifiedCard>
 
                           {/* Top Client */}
                           {topClients.length > 0 && (
-                            <div className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
-                              <div className='flex items-center justify-between mb-2'>
-                                <span className='text-xs font-medium text-gray-500 uppercase tracking-wide'>{t('daily_summary.top_client')}</span>
-                                <Award className='h-4 w-4 text-gray-400' />
+                            <UnifiedCard variant="outlined">
+                              <div className='flex items-center justify-between mb-3'>
+                                <Tooltip content="Client with the highest transaction volume today">
+                                  <div className='flex items-center gap-2'>
+                                    <span className='text-sm font-semibold text-gray-700'>Top Client</span>
+                                    <HelpCircle className='h-4 w-4 text-gray-400' />
+                                  </div>
+                                </Tooltip>
+                                <div className='w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                  <Award className='h-4 w-4 text-gray-600' />
+                                </div>
                               </div>
-                              <p className='text-sm font-semibold text-gray-900 truncate mb-1'>{topClients[0].name}</p>
-                              <p className='text-xs text-gray-600'>{formatCurrency(topClients[0].total, '₺')}</p>
-                            </div>
+                              <p className='text-lg font-bold text-gray-900 truncate mb-2'>{topClients[0].name}</p>
+                              <div className='flex items-center justify-between'>
+                                <span className='text-xs text-gray-600'>Total Volume</span>
+                                <span className='text-xl font-bold text-gray-900'>{formatCurrency(topClients[0].total, '₺')}</span>
+                              </div>
+                              {topClients[0].count > 1 && (
+                                <p className='text-xs text-gray-500 mt-2'>{topClients[0].count} transactions</p>
+                              )}
+                            </UnifiedCard>
                           )}
                         </div>
 
-                        {/* Detailed Breakdowns */}
-                        <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+                        {/* Detailed Breakdowns - Collapsible */}
+                        <div className='space-y-4'>
                           {/* PSP Summary */}
                           {dailySummaryData.psp_summary.length > 0 && (
-                            <div className='bg-white border border-gray-200 rounded-lg p-5'>
-                              <div className='flex items-center gap-2 mb-4 pb-3 border-b border-gray-200'>
-                                <Building2 className='h-4 w-4 text-gray-600' />
-                                <h3 className='text-sm font-semibold text-gray-900'>{t('daily_summary.payment_service_providers')}</h3>
-                                <span className='ml-auto text-xs text-gray-500'>{dailySummaryData.psp_summary.length} {t('daily_summary.psps')}</span>
-                              </div>
-                              <div className='space-y-3'>
-                                {dailySummaryData.psp_summary.slice(0, 5).map((psp, idx) => {
-                                  const isTether = psp.is_tether || (psp.name && (psp.name.toLowerCase().includes('tether') || psp.name === 'TETHER'));
-                                  const grossAmount = isTether ? (psp.gross_usd || psp.amount_usd || 0) : (psp.gross_tl || psp.amount_tl || 0);
-                                  const commission = isTether ? psp.commission_usd : psp.commission_tl;
-                                  const netAmount = isTether ? psp.net_usd : psp.net_tl;
-                                  const currencySymbol = isTether ? '$' : '₺';
-                                  
-                                  return (
-                                    <div key={idx} className='bg-gray-50 rounded-lg p-3 border border-gray-100'>
-                                      <div className='flex justify-between items-start mb-2'>
-                                        <div className='flex-1 min-w-0'>
-                                          <p className='text-sm font-medium text-gray-900 truncate'>{psp.name}</p>
-                                        </div>
-                                      </div>
-                                      <div className='grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-200'>
-                                        <div>
-                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.gross')}</p>
-                                          <p className='text-sm font-semibold text-gray-900'>
-                                            {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.commission_label')}</p>
-                                          <p className='text-sm font-semibold text-gray-700'>
-                                            {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.net')}</p>
-                                          <p className='text-sm font-semibold text-gray-900'>
-                                            {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                                {dailySummaryData.psp_summary.length > 5 && (
-                                  <div className='text-center pt-2 border-t border-gray-100'>
-                                    <span className='text-xs text-gray-500'>
-                                      {t('daily_summary.more_psps', { count: dailySummaryData.psp_summary.length - 5 })}
-                                    </span>
+                            <UnifiedCard variant="outlined" className="overflow-hidden">
+                              <button
+                                onClick={() => setExpandedBreakdowns(prev => ({ ...prev, psp: !prev.psp }))}
+                                className='w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors'
+                              >
+                                <div className='flex items-center gap-3'>
+                                  <div className='w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                    <Building2 className='h-5 w-5 text-gray-600' />
                                   </div>
-                                )}
-                              </div>
-                            </div>
+                                  <div className='text-left'>
+                                    <h3 className='text-base font-semibold text-gray-900'>{t('daily_summary.payment_service_providers')}</h3>
+                                    <p className='text-xs text-gray-500'>{dailySummaryData.psp_summary.length} {t('daily_summary.psps')}</p>
+                                  </div>
+                                </div>
+                                <div className='flex items-center gap-2'>
+                                  <Tooltip content="Click to expand/collapse detailed PSP breakdown">
+                                    <span className='text-xs text-gray-500 font-medium'>
+                                      {expandedBreakdowns.psp ? 'Hide Details' : 'Show Details'}
+                                    </span>
+                                  </Tooltip>
+                                  {expandedBreakdowns.psp ? (
+                                    <ChevronUp className='h-5 w-5 text-gray-400' />
+                                  ) : (
+                                    <ChevronDown className='h-5 w-5 text-gray-400' />
+                                  )}
+                                </div>
+                              </button>
+                              
+                              {expandedBreakdowns.psp && (
+                                <div className='p-5 pt-0 space-y-3 border-t border-gray-200'>
+                                  {dailySummaryData.psp_summary.map((psp, idx) => {
+                                    const isTether = psp.is_tether || (psp.name && (psp.name.toLowerCase().includes('tether') || psp.name === 'TETHER'));
+                                    const grossAmount = isTether ? (psp.gross_usd || psp.amount_usd || 0) : (psp.gross_tl || psp.amount_tl || 0);
+                                    const commission = isTether ? psp.commission_usd : psp.commission_tl;
+                                    const netAmount = isTether ? psp.net_usd : psp.net_tl;
+                                    const currencySymbol = isTether ? '$' : '₺';
+                                    
+                                    return (
+                                      <div key={idx} className='bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-sm transition-shadow'>
+                                        <div className='flex justify-between items-start mb-3'>
+                                          <div className='flex-1 min-w-0'>
+                                            <p className='text-sm font-semibold text-gray-900 truncate'>{psp.name}</p>
+                                            <p className='text-xs text-gray-500 mt-0.5'>{psp.count} transactions</p>
+                                          </div>
+                                        </div>
+                                        <div className='grid grid-cols-3 gap-3 pt-3 border-t border-gray-200'>
+                                          <div className='bg-white rounded-lg p-2'>
+                                            <p className='text-xs text-gray-500 mb-1'>{t('daily_summary.gross')}</p>
+                                            <p className='text-base font-bold text-gray-900'>
+                                              {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </p>
+                                          </div>
+                                          <div className='bg-white rounded-lg p-2'>
+                                            <p className='text-xs text-gray-500 mb-1'>{t('daily_summary.commission_label')}</p>
+                                            <p className='text-base font-bold text-gray-700'>
+                                              {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </p>
+                                          </div>
+                                          <div className='bg-white rounded-lg p-2'>
+                                            <p className='text-xs text-gray-500 mb-1'>{t('daily_summary.net')}</p>
+                                            <p className='text-base font-bold text-gray-900'>
+                                              {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </UnifiedCard>
                           )}
 
                           {/* Payment Methods Summary */}
                           {dailySummaryData.payment_method_summary.length > 0 && (
-                            <div className='bg-white border border-gray-200 rounded-lg p-5'>
-                              <div className='flex items-center gap-2 mb-4 pb-3 border-b border-gray-200'>
-                                <CreditCard className='h-4 w-4 text-gray-600' />
-                                <h3 className='text-sm font-semibold text-gray-900'>{t('daily_summary.payment_methods')}</h3>
-                                <span className='ml-auto text-xs text-gray-500'>{dailySummaryData.payment_method_summary.length} {t('daily_summary.methods')}</span>
-                              </div>
-                              <div className='space-y-3'>
-                                {dailySummaryData.payment_method_summary.slice(0, 5).map((method, idx) => {
-                                  const isTether = method.name && (method.name.toLowerCase().includes('tether') || method.name === 'TETHER');
-                                  const grossAmount = isTether ? (method.gross_usd || method.amount_usd || 0) : (method.gross_tl || method.amount_tl || 0);
-                                  const commission = isTether ? method.commission_usd : method.commission_tl;
-                                  const netAmount = isTether ? method.net_usd : method.net_tl;
-                                  const currencySymbol = isTether ? '$' : '₺';
-                                  
-                                  return (
-                                    <div key={idx} className='bg-gray-50 rounded-lg p-3 border border-gray-100'>
-                                      <div className='flex justify-between items-start mb-2'>
-                                        <div className='flex-1 min-w-0'>
-                                          <p className='text-sm font-medium text-gray-900'>{normalizePaymentMethodName(method.name)}</p>
-                                        </div>
-                                      </div>
-                                      <div className='grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-200'>
-                                        <div>
-                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.gross')}</p>
-                                          <p className='text-sm font-semibold text-gray-900'>
-                                            {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.commission_label')}</p>
-                                          <p className='text-sm font-semibold text-gray-700'>
-                                            {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <p className='text-xs text-gray-500 mb-0.5'>{t('daily_summary.net')}</p>
-                                          <p className='text-sm font-semibold text-gray-900'>
-                                            {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                                {dailySummaryData.payment_method_summary.length > 5 && (
-                                  <div className='text-center pt-2 border-t border-gray-100'>
-                                    <span className='text-xs text-gray-500'>
-                                      {t('daily_summary.more_methods', { count: dailySummaryData.payment_method_summary.length - 5 })}
-                                    </span>
+                            <UnifiedCard variant="outlined" className="overflow-hidden">
+                              <button
+                                onClick={() => setExpandedBreakdowns(prev => ({ ...prev, paymentMethods: !prev.paymentMethods }))}
+                                className='w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors'
+                              >
+                                <div className='flex items-center gap-3'>
+                                  <div className='w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center'>
+                                    <CreditCard className='h-5 w-5 text-gray-600' />
                                   </div>
-                                )}
-                              </div>
-                            </div>
+                                  <div className='text-left'>
+                                    <h3 className='text-base font-semibold text-gray-900'>{t('daily_summary.payment_methods')}</h3>
+                                    <p className='text-xs text-gray-500'>{dailySummaryData.payment_method_summary.length} {t('daily_summary.methods')}</p>
+                                  </div>
+                                </div>
+                                <div className='flex items-center gap-2'>
+                                  <Tooltip content="Click to expand/collapse detailed payment method breakdown">
+                                    <span className='text-xs text-gray-500 font-medium'>
+                                      {expandedBreakdowns.paymentMethods ? 'Hide Details' : 'Show Details'}
+                                    </span>
+                                  </Tooltip>
+                                  {expandedBreakdowns.paymentMethods ? (
+                                    <ChevronUp className='h-5 w-5 text-gray-400' />
+                                  ) : (
+                                    <ChevronDown className='h-5 w-5 text-gray-400' />
+                                  )}
+                                </div>
+                              </button>
+                              
+                              {expandedBreakdowns.paymentMethods && (
+                                <div className='p-5 pt-0 space-y-3 border-t border-gray-200'>
+                                  {dailySummaryData.payment_method_summary.map((method, idx) => {
+                                    const isTether = method.name && (method.name.toLowerCase().includes('tether') || method.name === 'TETHER');
+                                    const grossAmount = isTether ? (method.gross_usd || method.amount_usd || 0) : (method.gross_tl || method.amount_tl || 0);
+                                    const commission = isTether ? method.commission_usd : method.commission_tl;
+                                    const netAmount = isTether ? method.net_usd : method.net_tl;
+                                    const currencySymbol = isTether ? '$' : '₺';
+                                    
+                                    return (
+                                      <div key={idx} className='bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-sm transition-shadow'>
+                                        <div className='flex justify-between items-start mb-3'>
+                                          <div className='flex-1 min-w-0'>
+                                            <p className='text-sm font-semibold text-gray-900'>{normalizePaymentMethodName(method.name)}</p>
+                                            <p className='text-xs text-gray-500 mt-0.5'>{method.count} transactions</p>
+                                          </div>
+                                        </div>
+                                        <div className='grid grid-cols-3 gap-3 pt-3 border-t border-gray-200'>
+                                          <div className='bg-white rounded-lg p-2'>
+                                            <p className='text-xs text-gray-500 mb-1'>{t('daily_summary.gross')}</p>
+                                            <p className='text-base font-bold text-gray-900'>
+                                              {currencySymbol}{grossAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </p>
+                                          </div>
+                                          <div className='bg-white rounded-lg p-2'>
+                                            <p className='text-xs text-gray-500 mb-1'>{t('daily_summary.commission_label')}</p>
+                                            <p className='text-base font-bold text-gray-700'>
+                                              {currencySymbol}{commission.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </p>
+                                          </div>
+                                          <div className='bg-white rounded-lg p-2'>
+                                            <p className='text-xs text-gray-500 mb-1'>{t('daily_summary.net')}</p>
+                                            <p className='text-base font-bold text-gray-900'>
+                                              {currencySymbol}{netAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </UnifiedCard>
                           )}
                         </div>
 

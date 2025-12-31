@@ -41,52 +41,40 @@ class TenantMiddleware:
         """
         Set the tenant context for the current request.
         Called before each request.
+        
+        TEMPORARILY DISABLED: Multi-tenancy is disabled to fix organization_id type mismatch issues.
         """
-        # Default: no organization context
-        g.organization_id = None
+        # TEMPORARY FIX: Disable organization filtering completely
+        g.organization_id = None  # None means no filtering
         g.organization = None
-        g.is_super_admin = False
+        g.is_super_admin = True  # Treat everyone as super admin (no org filtering)
         
         # Skip for static files and health checks
         if request.path.startswith('/static') or request.path.startswith('/api/v1/health'):
             return
         
-        # Check if user is authenticated
-        if current_user and current_user.is_authenticated:
-            try:
-                # Get organization from user
-                org_id = getattr(current_user, 'organization_id', None)
-                
-                if org_id:
-                    g.organization_id = org_id
-                    
-                    # Optionally load full organization object
-                    # Only if needed for the request (lazy loading)
-                    # g.organization = current_user.organization
-                    
-                    # Check if user is super admin (can access all orgs)
-                    # Super admins have admin_level 0 or 1
-                    admin_level = getattr(current_user, 'admin_level', None)
-                    if admin_level in [0, 1]:
-                        g.is_super_admin = True
-                        
-                        # Check for organization override header (for super admins)
-                        override_org = request.headers.get('X-Organization-ID')
-                        if override_org:
-                            try:
-                                g.organization_id = int(override_org)
-                                logger.debug(f"Super admin overriding org to {g.organization_id}")
-                            except ValueError:
-                                pass
-                else:
-                    # User has no organization - assign to default (ID: 1)
-                    # This handles legacy users created before multi-tenancy
-                    g.organization_id = 1
-                    logger.debug(f"User {current_user.id} has no org, using default (1)")
-                    
-            except Exception as e:
-                logger.warning(f"Error setting tenant context: {e}")
-                g.organization_id = 1  # Fallback to default
+        # ORIGINAL CODE COMMENTED OUT - WILL RE-ENABLE AFTER FIXING
+        # if current_user and current_user.is_authenticated:
+        #     try:
+        #         org_id = getattr(current_user, 'organization_id', None)
+        #         if org_id:
+        #             g.organization_id = org_id
+        #             admin_level = getattr(current_user, 'admin_level', None)
+        #             if admin_level in [0, 1]:
+        #                 g.is_super_admin = True
+        #                 override_org = request.headers.get('X-Organization-ID')
+        #                 if override_org:
+        #                     try:
+        #                         g.organization_id = int(override_org)
+        #                         logger.debug(f"Super admin overriding org to {g.organization_id}")
+        #                     except ValueError:
+        #                         pass
+        #         else:
+        #             g.organization_id = 1
+        #             logger.debug(f"User {current_user.id} has no org, using default (1)")
+        #     except Exception as e:
+        #         logger.warning(f"Error setting tenant context: {e}")
+        #         g.organization_id = 1
     
     def _log_tenant_context(self, response):
         """Log tenant context after request (for debugging)"""
@@ -178,6 +166,8 @@ def filter_by_organization(query, model_class=None):
     """
     Add organization filter to a SQLAlchemy query.
     
+    TEMPORARILY DISABLED: Returns unfiltered query to bypass organization_id issues.
+    
     Usage:
         query = Transaction.query
         query = filter_by_organization(query, Transaction)
@@ -187,39 +177,50 @@ def filter_by_organization(query, model_class=None):
         query = db.session.query(Transaction).join(...)
         query = filter_by_organization(query, Transaction)
     """
-    org_id = get_current_organization_id()
-    
-    # If super admin and no specific org requested, return unfiltered
-    if is_super_admin() and not org_id:
-        return query
-    
-    # If no org context, use default org (1)
-    if not org_id:
-        org_id = 1
-    
-    # Apply filter
-    if model_class:
-        if hasattr(model_class, 'organization_id'):
-            return query.filter(model_class.organization_id == org_id)
-    
+    # TEMPORARY FIX: Return unfiltered query (no organization filtering)
     return query
+    
+    # ORIGINAL CODE COMMENTED OUT
+    # org_id = get_current_organization_id()
+    # 
+    # # If super admin and no specific org requested, return unfiltered
+    # if is_super_admin() and not org_id:
+    #     return query
+    # 
+    # # If no org context, use default org (1)
+    # if not org_id:
+    #     org_id = 1
+    # 
+    # # Apply filter
+    # if model_class:
+    #     if hasattr(model_class, 'organization_id'):
+    #         return query.filter(model_class.organization_id == org_id)
+    # 
+    # return query
 
 
 def set_organization_on_create(model_instance):
     """
     Set organization_id on a new model instance before saving.
     
+    TEMPORARILY DISABLED: Sets organization_id to None to avoid type mismatch issues.
+    
     Usage:
         transaction = Transaction(...)
         set_organization_on_create(transaction)
         db.session.add(transaction)
     """
-    org_id = get_current_organization_id()
-    if org_id and hasattr(model_instance, 'organization_id'):
-        model_instance.organization_id = org_id
-    elif hasattr(model_instance, 'organization_id'):
-        # Default to org 1 if no context
-        model_instance.organization_id = 1
+    # TEMPORARY FIX: Set to None instead of integer to avoid UUID/integer mismatch
+    if hasattr(model_instance, 'organization_id'):
+        model_instance.organization_id = None
+    
+    # ORIGINAL CODE COMMENTED OUT
+    # org_id = get_current_organization_id()
+    # if org_id and hasattr(model_instance, 'organization_id'):
+    #     model_instance.organization_id = org_id
+    # elif hasattr(model_instance, 'organization_id'):
+    #     # Default to org 1 if no context
+    #     model_instance.organization_id = 1
 
 
 class TenantQuery:

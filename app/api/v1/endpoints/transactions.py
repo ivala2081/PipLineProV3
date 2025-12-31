@@ -3,6 +3,7 @@ Transactions API endpoints for Flask
 """
 from flask import Blueprint, jsonify, request, current_app
 from flask_login import login_required, current_user
+from app.utils.hybrid_auth import hybrid_auth_required
 from sqlalchemy import func, text, case, and_
 from datetime import datetime, timedelta, timezone
 from app.models.transaction import Transaction
@@ -311,7 +312,7 @@ def debug_company_data():
         return jsonify({'error': str(e)}), 500
 
 @transactions_api.route("/clients")
-@login_required
+@hybrid_auth_required  # Use hybrid auth (supports both session and JWT)
 def get_clients():
     """Get clients data (grouped transactions by client) - Optimized with proper error handling"""
     try:
@@ -323,83 +324,96 @@ def get_clients():
         start_time = time.time()
         
         # Get the ACTUAL total count of unique clients (without limit) for accurate summary
-        actual_total_clients = db.session.query(
-            func.count(func.distinct(Transaction.client_name))
-        ).filter(
-            Transaction.client_name.isnot(None),
-            Transaction.client_name != ''
-        ).scalar() or 0
-        
-        logger.info(f"Total unique clients in database: {actual_total_clients}")
+        try:
+            actual_total_clients = db.session.query(
+                func.count(func.distinct(Transaction.client_name))
+            ).filter(
+                Transaction.client_name.isnot(None),
+                Transaction.client_name != ''
+            ).scalar() or 0
+            
+            logger.info(f"Total unique clients in database: {actual_total_clients}")
+        except Exception as count_error:
+            logger.warning(f"Error counting clients, using fallback: {str(count_error)}")
+            actual_total_clients = 0
         
         # Get transactions grouped by client with additional data including commission and company
         # First get the basic stats - use converted amounts (amount_try) for proper currency conversion
-        client_stats = db.session.query(
-            Transaction.client_name,
-            func.count(Transaction.id).label('transaction_count'),
-            # Use amount_try (converted to TRY) if available, otherwise fallback to amount
-            func.sum(
-                func.coalesce(Transaction.amount_try, Transaction.amount)
-            ).label('total_amount'),
-            # Use commission_try (converted to TRY) if available, otherwise fallback to commission
-            func.sum(
-                func.coalesce(Transaction.commission_try, Transaction.commission)
-            ).label('total_commission'),
-            # Calculate deposits separately (for Net Cash calculation)
-            func.sum(
-                case(
-                    (func.upper(Transaction.category).in_(['DEP', 'DEPOSIT', 'INVESTMENT']),
-                     func.abs(func.coalesce(Transaction.amount_try, Transaction.amount))),
-                    else_=0
-                )
-            ).label('total_deposits'),
-            # Calculate withdrawals separately (for Net Cash calculation)
-            func.sum(
-                case(
-                    (func.upper(Transaction.category).in_(['WD', 'WITHDRAW', 'WITHDRAWAL']),
-                     func.abs(func.coalesce(Transaction.amount_try, Transaction.amount))),
-                    else_=0
-                )
-            ).label('total_withdrawals'),
-            # For average, use converted amounts as well
-            func.avg(
-                func.coalesce(Transaction.amount_try, Transaction.amount)
-            ).label('average_amount'),
-            func.min(Transaction.created_at).label('first_transaction'),
-            func.max(Transaction.created_at).label('last_transaction')
-        ).filter(
-            Transaction.client_name.isnot(None),
-            Transaction.client_name != ''
-        ).group_by(Transaction.client_name).limit(1000).all()  # Limit to 1000 clients for performance
-        
-        logger.info(f"Found {len(client_stats)} unique clients (limited to 1000 for performance)")
+        try:
+            client_stats = db.session.query(
+                Transaction.client_name,
+                func.count(Transaction.id).label('transaction_count'),
+                # Use amount_try (converted to TRY) if available, otherwise fallback to amount
+                func.sum(
+                    func.coalesce(Transaction.amount_try, Transaction.amount)
+                ).label('total_amount'),
+                # Use commission_try (converted to TRY) if available, otherwise fallback to commission
+                func.sum(
+                    func.coalesce(Transaction.commission_try, Transaction.commission)
+                ).label('total_commission'),
+                # Calculate deposits separately (for Net Cash calculation)
+                func.sum(
+                    case(
+                        (func.upper(Transaction.category).in_(['DEP', 'DEPOSIT', 'INVESTMENT']),
+                         func.abs(func.coalesce(Transaction.amount_try, Transaction.amount))),
+                        else_=0
+                    )
+                ).label('total_deposits'),
+                # Calculate withdrawals separately (for Net Cash calculation)
+                func.sum(
+                    case(
+                        (func.upper(Transaction.category).in_(['WD', 'WITHDRAW', 'WITHDRAWAL']),
+                         func.abs(func.coalesce(Transaction.amount_try, Transaction.amount))),
+                        else_=0
+                    )
+                ).label('total_withdrawals'),
+                # For average, use converted amounts as well
+                func.avg(
+                    func.coalesce(Transaction.amount_try, Transaction.amount)
+                ).label('average_amount'),
+                func.min(Transaction.created_at).label('first_transaction'),
+                func.max(Transaction.created_at).label('last_transaction')
+            ).filter(
+                Transaction.client_name.isnot(None),
+                Transaction.client_name != ''
+            ).group_by(Transaction.client_name).limit(1000).all()  # Limit to 1000 clients for performance
+            
+            logger.info(f"Found {len(client_stats)} unique clients (limited to 1000 for performance)")
+        except Exception as query_error:
+            logger.error(f"Error executing client stats query: {str(query_error)}")
+            import traceback
+            logger.error(f"Query error traceback: {traceback.format_exc()}")
+            # Set empty result to continue with fallback
+            client_stats = []
         
         # Get company data for all clients in ONE query (optimized - no N+1 problem)
         # Get all client names from our stats
-        client_names = [client.client_name for client in client_stats]
+        client_names = [client.client_name for client in client_stats] if client_stats else []
         
         # Single query to get most recent company for ALL clients
         # Subquery to get the latest transaction ID for each client with a company
-        latest_company_subquery = db.session.query(
-            Transaction.client_name,
-            func.max(Transaction.created_at).label('max_created_at')
-        ).filter(
-            Transaction.client_name.in_(client_names),
-            Transaction.company.isnot(None),
-            Transaction.company != ''
-        ).group_by(Transaction.client_name).subquery()
-        
-        # Main query to get companies for these latest transactions
-        company_data = db.session.query(
-            Transaction.client_name,
-            Transaction.company
-        ).join(
-            latest_company_subquery,
-            and_(
-                Transaction.client_name == latest_company_subquery.c.client_name,
-                Transaction.created_at == latest_company_subquery.c.max_created_at
-            )
-        ).all()
+        company_data = []
+        if client_names:
+            latest_company_subquery = db.session.query(
+                Transaction.client_name,
+                func.max(Transaction.created_at).label('max_created_at')
+            ).filter(
+                Transaction.client_name.in_(client_names),
+                Transaction.company.isnot(None),
+                Transaction.company != ''
+            ).group_by(Transaction.client_name).subquery()
+            
+            # Main query to get companies for these latest transactions
+            company_data = db.session.query(
+                Transaction.client_name,
+                Transaction.company
+            ).join(
+                latest_company_subquery,
+                and_(
+                    Transaction.client_name == latest_company_subquery.c.client_name,
+                    Transaction.created_at == latest_company_subquery.c.max_created_at
+                )
+            ).all()
         
         # Convert to dictionary for fast lookup
         client_companies = {row.client_name: row.company for row in company_data}
@@ -439,30 +453,32 @@ def get_clients():
                 }
         
         # Get latest payment_method and category for each client in a single query
-        latest_data_subquery = db.session.query(
-            Transaction.client_name,
-            func.max(Transaction.created_at).label('max_created_at')
-        ).filter(
-            Transaction.client_name.in_(client_names)
-        ).group_by(Transaction.client_name).subquery()
-        
-        latest_transaction_data = db.session.query(
-            Transaction.client_name,
-            Transaction.payment_method,
-            Transaction.category
-        ).join(
-            latest_data_subquery,
-            and_(
-                Transaction.client_name == latest_data_subquery.c.client_name,
-                Transaction.created_at == latest_data_subquery.c.max_created_at
-            )
-        ).all()
-        
-        # Merge latest transaction data into metadata
-        for row in latest_transaction_data:
-            if row.client_name in client_metadata_dict:
-                client_metadata_dict[row.client_name]['payment_method'] = row.payment_method
-                client_metadata_dict[row.client_name]['category'] = row.category
+        latest_transaction_data = []
+        if client_names:
+            latest_data_subquery = db.session.query(
+                Transaction.client_name,
+                func.max(Transaction.created_at).label('max_created_at')
+            ).filter(
+                Transaction.client_name.in_(client_names)
+            ).group_by(Transaction.client_name).subquery()
+            
+            latest_transaction_data = db.session.query(
+                Transaction.client_name,
+                Transaction.payment_method,
+                Transaction.category
+            ).join(
+                latest_data_subquery,
+                and_(
+                    Transaction.client_name == latest_data_subquery.c.client_name,
+                    Transaction.created_at == latest_data_subquery.c.max_created_at
+                )
+            ).all()
+            
+            # Merge latest transaction data into metadata
+            for row in latest_transaction_data:
+                if row.client_name in client_metadata_dict:
+                    client_metadata_dict[row.client_name]['payment_method'] = row.payment_method
+                    client_metadata_dict[row.client_name]['category'] = row.category
         
         logger.info(f"Built metadata for {len(client_metadata_dict)} clients")
         
@@ -669,16 +685,33 @@ def get_clients():
         
     except Exception as e:
         # Performance tracking completed
+        elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
             
         # Log error with full traceback for debugging
         import traceback
         error_traceback = traceback.format_exc()
         logger.error(f"Error in get_clients endpoint: {str(e)}")
         logger.error(f"Full traceback: {error_traceback}")
-        api_logger.error(f"Error in get_clients: {str(e)}", user_id=current_user.id, context="get_clients")
+        api_logger.error(f"Error in get_clients: {str(e)}", user_id=current_user.id if current_user.is_authenticated else None, context="get_clients")
         
-        # Return empty array instead of error to prevent UI crashes
-        return jsonify([]), 200
+        # Return proper error response with empty data structure to prevent UI crashes
+        # Frontend expects { clients: [], summary: {} } format
+        return jsonify({
+            'clients': [],
+            'summary': {
+                'total_clients': 0,
+                'new_clients_this_month': 0,
+                'avg_transaction_value': 0,
+                'multi_currency_count': 0,
+                'top_by_volume': None,
+                'top_by_commission': None,
+                'most_active': None,
+                'total_transactions': 0,
+                'total_volume': 0,
+                'error': True,
+                'error_message': str(e) if current_app.config.get('DEBUG') else 'Failed to load clients data'
+            }
+        }), 200
 
 @transactions_api.route("/search-clients")
 @login_required
@@ -2496,8 +2529,10 @@ def add_dropdown_option():
                 'error': 'This option already exists'
             }), 400
         
-        # Create new option
+        # Create new option with UUID
+        import uuid
         option = Option(
+            id=str(uuid.uuid4()),
             field_name=field_name,
             value=value,
             commission_rate=commission_decimal
@@ -2826,7 +2861,8 @@ def delete_transaction(transaction_id):
     # Delete transaction using service (includes automatic PSP sync)
     try:
         from app.services.transaction_service import TransactionService
-        TransactionService.delete_transaction(transaction.id, current_user.id)
+        service = TransactionService()
+        service.delete_transaction(transaction.id)
         
         logger.info(f"Transaction {transaction_id} deleted successfully by user {current_user.username}")
         
@@ -2834,7 +2870,7 @@ def delete_transaction(transaction_id):
             data={
                 'transaction': transaction_info
             },
-            message='Transaction deleted successfully'
+            meta={'message': 'Transaction deleted successfully'}
         )), 200
     except Exception as e:
         logger.error(f"Error deleting transaction {transaction_id}: {str(e)}", exc_info=True)

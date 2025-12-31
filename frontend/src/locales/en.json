@@ -53,7 +53,8 @@
     "try_again": "Try Again",
     "copied": "Copied",
     "na": "N/A",
-    "none": "None"
+    "none": "None",
+    "validating": "Validating..."
   },
   "navigation": {
     "dashboard": "Dashboard",
@@ -882,7 +883,7 @@
         "endpoint_not_found": "API endpoint not found. Please check your connection.",
         "server_error": "Server error. Please try again in a few moments.",
         "access_denied": "Access denied. Please check your permissions.",
-        "dropdown_load_failed": "Dropdown options could not be loaded from API, using default values."
+        "dropdown_load_failed": "⚠️ Using default dropdown values. Some custom options (PSP, Company) may not be available. The form is still functional."
       }
     }
   },
@@ -1105,6 +1106,10 @@
     "security_pin_hint": "Enter PIN to save changes to this expense",
     "enter_security_pin": "Enter security PIN to edit this expense",
     "invalid_security_pin": "Invalid security PIN. Please try again.",
+    "security_verification": "Security Verification",
+    "enter_pin_to_continue": "Enter your 4-digit PIN to continue",
+    "security_pin": "Security PIN",
+    "pin_must_be_4_digits": "PIN must be 4 digits",
     "all_expenses": "All Expenses",
     "daily_summary": "Daily Summary",
     "daily_expenses": "Daily Expenses",

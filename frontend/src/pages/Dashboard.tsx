@@ -78,6 +78,8 @@ import {
   UnifiedGrid,
   UnifiedWrapper
 } from '../design-system';
+import { ErrorState } from '../components/ui/ErrorState';
+import { LoadingState } from '../components/ui/LoadingState';
 import { DashboardQuickActions } from '../components/modern/dashboard/DashboardQuickActions';
 import { DashboardRevenue } from '../components/modern/dashboard/DashboardRevenue';
 import RecentActivityFeed from '../components/modern/RecentActivityFeed';
@@ -508,17 +510,6 @@ const Dashboard = memo(() => {
 
   return (
     <UnifiedWrapper variant="container" spacing="xl" padding="xl">
-
-{/* Debug Message - Always visible for debugging */}
-      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h4 className="font-semibold text-blue-800 mb-2">Dashboard Debug:</h4>
-        <p className="text-sm text-blue-700">
-          Dashboard is rendering! Active tab: {activeTab}, Loading: {loading ? 'Yes' : 'No'},
-          Error: {error || 'None'}, Authenticated: {isAuthenticated ? 'Yes' : 'No'},
-          Has Dashboard Data: {dashboardData ? 'Yes' : 'No'}, NODE_ENV: {process.env.NODE_ENV}
-        </p>
-      </div>
-
       {/* Enhanced Page Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
@@ -560,25 +551,15 @@ const Dashboard = memo(() => {
       {/* Error State */}
       {error && (
         <div className="my-6">
-          <div className='bg-red-50 border border-red-200 rounded-xl p-6'>
-            <div className='flex items-center gap-3'>
-              <div className='w-10 h-10 bg-red-100 rounded-full flex items-center justify-center'>
-                <X className='h-5 w-5 text-red-600' />
-              </div>
-              <div>
-                <h3 className='text-lg font-semibold text-red-800'>{t('dashboard.error_loading_dashboard')}</h3>
-                <p className='text-red-700 mt-1'>{error}</p>
-              </div>
-              <UnifiedButton
-                onClick={handleClearError}
-                variant="ghost"
-                size="sm"
-                className='ml-auto text-red-400 hover:text-red-600'
-              >
-                <X className='h-5 w-5' />
-              </UnifiedButton>
-            </div>
-          </div>
+          <ErrorState
+            title={t('dashboard.error_loading_dashboard')}
+            message={error}
+            onRetry={() => {
+              handleClearError();
+              handleFetchDashboardData(true);
+            }}
+            variant="error"
+          />
         </div>
       )}
 
@@ -629,41 +610,13 @@ const Dashboard = memo(() => {
                   animated={true}
                   animationDuration={1200}
                 />
-              </UnifiedGrid>
+              </div>
             </UnifiedSection>
           )}
 
           {/* Revenue Analytics */}
           <UnifiedSection title={t('dashboard.revenue_analytics')} description={t('dashboard.company_revenue_breakdown')}>
-            {/* Debug Info */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <h4 className="font-semibold text-yellow-800 mb-2">Debug Info:</h4>
-                <pre className="text-xs text-yellow-700 overflow-auto max-h-40">
-                  {JSON.stringify({
-                    loading: loading,
-                    error: error,
-                    refreshing: refreshing,
-                    dashboardData_exists: !!dashboardData,
-                    dashboardData_keys: dashboardData ? Object.keys(dashboardData) : [],
-                    summary_exists: !!dashboardData?.summary,
-                    summary_keys: dashboardData?.summary ? Object.keys(dashboardData.summary) : [],
-                    daily_revenue: (dashboardData?.summary as any)?.daily_revenue,
-                    weekly_revenue: (dashboardData?.summary as any)?.weekly_revenue,
-                    monthly_revenue: (dashboardData?.summary as any)?.monthly_revenue,
-                    annual_revenue: (dashboardData?.summary as any)?.annual_revenue,
-                    has_revenue_trends: !!(dashboardData as any)?.revenue_trends,
-                    revenue_trends_length: (dashboardData as any)?.revenue_trends?.length || 0,
-                    topPerformers_exists: !!topPerformers,
-                    topPerformersData_exists: !!topPerformersData,
-                    rates_exists: !!rates,
-                    rates_keys: rates ? Object.keys(rates) : [],
-                    pspRolloverData_exists: !!pspRolloverData
-                  }, null, 2)}
-                </pre>
-              </div>
-            )}
-            <UnifiedGrid cols={4} gap="lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <MetricCard
                 title={t('dashboard.daily_revenue')}
                 value={formatCurrency((dashboardData?.summary as any)?.daily_revenue || 0, '₺')}
@@ -703,7 +656,7 @@ const Dashboard = memo(() => {
                 animated={true}
                 animationDuration={1200}
               />
-            </UnifiedGrid>
+            </div>
 
             {/* Revenue Trend Chart */}
             <div className="mt-6">
@@ -844,66 +797,6 @@ const Dashboard = memo(() => {
             ) : pspRolloverData?.psps?.length > 0 ? (
               <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'>
                 {pspRolloverData.psps.map((psp: any, index: number) => {
-                  const isPositive = psp.total_rollover > 0;
-                  const isNegative = psp.total_rollover < 0;
-                  const isZero = psp.total_rollover === 0;
-
-                  return (
-                    <div
-                      key={psp.psp}
-                      className={`bg-white rounded-xl shadow-sm border-2 p-6 hover:shadow-md transition-all duration-200 ${isPositive ? 'border-red-200 hover:border-red-300' :
-                        isNegative ? 'border-green-200 hover:border-green-300' :
-                          'border-gray-200 hover:border-gray-300'
-                        }`}
-                    >
-                      <div className='flex items-start justify-between mb-4'>
-                        <div className='flex items-center gap-3'>
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isPositive ? 'bg-red-100' : isNegative ? 'bg-green-100' : 'bg-gray-100'
-                            }`}>
-                            <span className={`text-sm font-bold ${isPositive ? 'text-red-700' : isNegative ? 'text-green-700' : 'text-gray-700'
-                              }`}>
-                              {index + 1}
-                            </span>
-                          </div>
-                          <div>
-                            <h3 className='font-semibold text-gray-900 text-lg'>{psp.psp || t('dashboard.unknown_psp')}</h3>
-                            <p className='text-sm text-gray-500'>{psp.transaction_count} {t('dashboard.transactions')}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className='space-y-3'>
-                        <div className='text-center'>
-                          <div className={`text-2xl font-bold mb-1 ${isPositive ? 'text-red-600' : isNegative ? 'text-green-600' : 'text-gray-600'
-                            }`}>
-                            {formatCurrency(psp.total_rollover, '₺')}
-                          </div>
-                          <p className={`text-sm font-medium ${isPositive ? 'text-red-700' : isNegative ? 'text-green-700' : 'text-gray-700'
-                            }`}>
-                            {isPositive ? t('dashboard.amount_owed') : isNegative ? t('dashboard.credit_balance') : t('dashboard.settled')}
-                          </p>
-                        </div>
-
-                        <div className='pt-3 border-t border-gray-100'>
-                          <div className='grid grid-cols-2 gap-4 text-xs'>
-                            <div>
-                              <p className='text-gray-500'>{t('dashboard.net_amount')}</p>
-                              <p className='font-medium text-gray-900'>{formatCurrency(psp.total_net, '₺')}</p>
-                            </div>
-                            <div>
-                              <p className='text-gray-500'>{t('dashboard.allocated')}</p>
-                              <p className='font-medium text-gray-900'>{formatCurrency(psp.total_allocations, '₺')}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : pspRolloverData?.psps?.length > 0 ? (
-              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'>
-                {pspRolloverData.psps.slice(0, 8).map((psp: any, index: number) => {
                   const isPositive = psp.total_rollover > 0;
                   const isNegative = psp.total_rollover < 0;
                   const isZero = psp.total_rollover === 0;
@@ -1421,9 +1314,9 @@ const Dashboard = memo(() => {
                         icon={CreditCard}
                         color="orange"
                         animated={true}
-                        animationDuration={1200}
-                      />
-                    </UnifiedGrid>
+                animationDuration={1200}
+              />
+            </div>
                   </UnifiedSection>
                 )}
 
@@ -1475,7 +1368,9 @@ const Dashboard = memo(() => {
           }
 
           {/* Loading State */}
-          {loading && !dashboardData && <DashboardSkeleton />}
+          {loading && !dashboardData && (
+            <LoadingState message={t('dashboard.loading_dashboard') || 'Loading dashboard...'} />
+          )}
 
           {/* Exchange Rates Modal */}
           {

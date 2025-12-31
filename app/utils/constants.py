@@ -1,82 +1,167 @@
 """
-Application Constants
-Centralized location for all hardcoded values
+Application-wide constants
+Centralized location for magic strings and configuration values
 """
-from typing import List, Dict
+from enum import Enum
 
-# Currency codes and symbols
-CURRENCY_CODES: List[str] = ['TL', 'USD', 'EUR']
-CURRENCY_SYMBOLS: Dict[str, str] = {
-    'TL': '₺',
-    'USD': '$',
-    'EUR': '€',
-    'TRY': '₺'  # Alternative code for Turkish Lira
-}
 
-# Transaction categories
-TRANSACTION_CATEGORIES: List[str] = ['WD', 'DEP']
-CATEGORY_LABELS: Dict[str, str] = {
-    'WD': 'Withdraw',
-    'DEP': 'Deposit'
-}
+class TransactionCategory(str, Enum):
+    """Transaction category constants"""
+    DEPOSIT = "DEP"
+    WITHDRAWAL = "WD"
+    
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        """Check if value is a valid category"""
+        return value in [cls.DEPOSIT.value, cls.WITHDRAWAL.value]
+    
+    @classmethod
+    def get_all(cls) -> list[str]:
+        """Get all valid category values"""
+        return [cls.DEPOSIT.value, cls.WITHDRAWAL.value]
 
-# Payment methods (must match database codes)
-PAYMENT_METHODS: List[str] = ['KK', 'NAKIT', 'HAVALE', 'EFT', 'OTHER']
-PAYMENT_METHOD_LABELS: Dict[str, str] = {
-    'KK': 'Credit Card',
-    'NAKIT': 'Cash',
-    'HAVALE': 'Wire Transfer',
-    'EFT': 'Electronic Transfer',
-    'OTHER': 'Other'
-}
 
-# Pagination defaults
-DEFAULT_PAGE_SIZE: int = 50
-MAX_PAGE_SIZE: int = 500
-MIN_PAGE_SIZE: int = 1
+class Currency(str, Enum):
+    """Currency constants"""
+    TRY = "TL"  # Turkish Lira
+    USD = "USD"  # US Dollar
+    EUR = "EUR"  # Euro
+    
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        """Check if value is a valid currency"""
+        return value in [cls.TRY.value, cls.USD.value, cls.EUR.value]
+    
+    @classmethod
+    def get_all(cls) -> list[str]:
+        """Get all valid currency values"""
+        return [cls.TRY.value, cls.USD.value, cls.EUR.value]
 
-# Date formats
-DATE_FORMAT: str = '%Y-%m-%d'
-DATETIME_FORMAT: str = '%Y-%m-%d %H:%M:%S'
-ISO_DATE_FORMAT: str = '%Y-%m-%dT%H:%M:%S'
 
-# Validation limits
-MAX_CLIENT_NAME_LENGTH: int = 255
-MAX_DESCRIPTION_LENGTH: int = 1000
-MAX_AMOUNT: float = 999999999.99
-MIN_AMOUNT: float = 0.01
+class UserRole(str, Enum):
+    """User role constants"""
+    ADMIN = "admin"
+    USER = "user"
+    VIEWER = "viewer"
+    MANAGER = "manager"
+    
+    @classmethod
+    def is_valid(cls, value: str) -> bool:
+        """Check if value is a valid role"""
+        return value in [cls.ADMIN.value, cls.USER.value, cls.VIEWER.value, cls.MANAGER.value]
+    
+    @classmethod
+    def get_all(cls) -> list[str]:
+        """Get all valid role values"""
+        return [cls.ADMIN.value, cls.USER.value, cls.VIEWER.value, cls.MANAGER.value]
 
-# Rate limiting
-DEFAULT_RATE_LIMIT: str = "200 per day; 50 per hour; 10 per minute"
-API_RATE_LIMIT: str = "5000 per day; 1000 per hour; 200 per minute"
 
-# Cache TTL (in seconds)
-DEFAULT_CACHE_TTL: int = 3600  # 1 hour
-SHORT_CACHE_TTL: int = 300     # 5 minutes
-LONG_CACHE_TTL: int = 86400   # 24 hours
+class AdminLevel(int, Enum):
+    """Admin level constants"""
+    USER = 0
+    MAIN_ADMIN = 1
+    SECONDARY_ADMIN = 2
+    SUB_ADMIN = 3
+    
+    @classmethod
+    def is_valid(cls, value: int) -> bool:
+        """Check if value is a valid admin level"""
+        return value in [cls.USER.value, cls.MAIN_ADMIN.value, cls.SECONDARY_ADMIN.value, cls.SUB_ADMIN.value]
 
-# File upload limits
-MAX_FILE_SIZE: int = 16 * 1024 * 1024  # 16MB
-ALLOWED_FILE_EXTENSIONS: List[str] = ['csv', 'xlsx', 'jpg', 'jpeg', 'png']
 
-# Security
-BULK_DELETE_CONFIRMATION_CODE: str = '4561'
-SESSION_LIFETIME_HOURS: int = 8
-REMEMBER_ME_DAYS: int = 30
+# Payment method constants (common values)
+class PaymentMethod:
+    """Payment method constants"""
+    BANK = "BANK"
+    CREDIT_CARD = "KK"  # Kredi Kartı
+    TETHER = "TETHER"
+    USDT = "USDT"
+    CASH = "CASH"
+    
+    @classmethod
+    def get_common_methods(cls) -> list[str]:
+        """Get common payment methods"""
+        return [cls.BANK, cls.CREDIT_CARD, cls.TETHER, cls.USDT, cls.CASH]
 
-# Exchange rate providers
-EXCHANGE_RATE_PROVIDERS: List[str] = ['ExchangeRate-API', 'Fixer.io', 'CurrencyLayer']
-DEFAULT_EXCHANGE_RATE_PROVIDER: str = 'ExchangeRate-API'
 
-# Database
-DEFAULT_DB_POOL_SIZE: int = 5
-MAX_DB_POOL_OVERFLOW: int = 10
+# PSP (Payment Service Provider) common names
+class PSP:
+    """PSP constants"""
+    # Common PSP names - add more as needed
+    @classmethod
+    def get_common_psps(cls) -> list[str]:
+        """Get common PSP names"""
+        return []  # Will be populated from database
 
-# Logging
-DEFAULT_LOG_LEVEL: str = 'INFO'
-PRODUCTION_LOG_LEVEL: str = 'WARNING'
 
-# Analytics and Dashboard limits
-MAX_REVENUE_TRENDS_DAYS: int = 365  # Maximum days for revenue trends charts
-MAX_DASHBOARD_ITEMS: int = 100  # Maximum items to display in dashboard lists
+# Default values
+class Defaults:
+    """Default configuration values"""
+    PAGE_SIZE = 25
+    MAX_PAGE_SIZE = 100
+    DEFAULT_CURRENCY = Currency.TRY.value
+    DEFAULT_CATEGORY = TransactionCategory.DEPOSIT.value
+    SESSION_TIMEOUT_HOURS = 8
+    REMEMBER_ME_DAYS = 30
 
+
+# API Response codes
+class ApiResponseCode:
+    """API response code constants"""
+    SUCCESS = "SUCCESS"
+    ERROR = "ERROR"
+    VALIDATION_ERROR = "VALIDATION_ERROR"
+    AUTHENTICATION_ERROR = "AUTHENTICATION_ERROR"
+    AUTHORIZATION_ERROR = "AUTHORIZATION_ERROR"
+    NOT_FOUND = "NOT_FOUND"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+    RATE_LIMIT_ERROR = "RATE_LIMIT_ERROR"
+
+
+# File upload constants
+class FileUpload:
+    """File upload constants"""
+    MAX_FILE_SIZE_MB = 16
+    MAX_IMAGE_SIZE_MB = 5
+    MAX_EXCEL_SIZE_MB = 10
+    MAX_CSV_SIZE_MB = 5
+    ALLOWED_EXTENSIONS = {'csv', 'xlsx', 'xls', 'jpg', 'jpeg', 'png', 'gif'}
+
+
+# Cache TTL constants (in seconds)
+class CacheTTL:
+    """Cache time-to-live constants"""
+    SHORT = 60  # 1 minute
+    MEDIUM = 300  # 5 minutes
+    LONG = 3600  # 1 hour
+    VERY_LONG = 86400  # 24 hours
+    EXCHANGE_RATE = 300  # 5 minutes for exchange rates
+    DASHBOARD = 60  # 1 minute for dashboard data
+
+
+# Rate limiting constants
+class RateLimit:
+    """Rate limiting constants"""
+    DEFAULT = "200 per day; 50 per hour; 10 per minute"
+    LOGIN = "5 per minute"
+    API = "100 per hour"
+    TRANSACTION_CREATE = "30 per minute; 500 per hour"
+
+
+# Database constants
+class Database:
+    """Database-related constants"""
+    SLOW_QUERY_THRESHOLD = 1.0  # seconds
+    QUERY_TIMEOUT = 30  # seconds
+    CONNECTION_POOL_SIZE = 10
+    MAX_OVERFLOW = 20
+
+
+# Dashboard and Analytics Constants
+MAX_REVENUE_TRENDS_DAYS = 365  # Maximum days for revenue trends
+MAX_DASHBOARD_ITEMS = 100  # Maximum items in dashboard queries
+
+# Pagination Constants
+DEFAULT_PAGE_SIZE = 25  # Default page size for pagination
+MAX_PAGE_SIZE = 100  # Maximum page size allowed
+MIN_PAGE_SIZE = 1  # Minimum page size allowed

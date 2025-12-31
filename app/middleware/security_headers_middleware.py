@@ -95,11 +95,11 @@ class SecurityHeadersMiddleware:
                 if csp:
                     response.headers['Content-Security-Policy'] = csp
                 elif is_production:
-                    # Production default - more restrictive
+                    # Production default - includes unpkg.com for Swagger UI and cdn.redoc.ly for ReDoc
                     response.headers['Content-Security-Policy'] = (
                         "default-src 'self'; "
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io; "
-                        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdn.socket.io https://unpkg.com https://cdn.redoc.ly; "
+                        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; "
                         "font-src 'self' https://fonts.gstatic.com; "
                         "img-src 'self' data:; "
                         "connect-src 'self' http://127.0.0.1:7242 https://cdn.socket.io; "
@@ -109,8 +109,8 @@ class SecurityHeadersMiddleware:
                     # Development default - more permissive (includes debug logging endpoint)
                     response.headers['Content-Security-Policy'] = (
                         "default-src 'self'; "
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
-                        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdn.redoc.ly; "
+                        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net; "
                         "font-src 'self' https://fonts.gstatic.com; "
                         "img-src 'self' data: https:; "
                         "connect-src 'self' http://127.0.0.1:7242 https://query1.finance.yahoo.com; "

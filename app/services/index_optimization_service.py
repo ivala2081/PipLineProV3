@@ -107,7 +107,7 @@ class IndexOptimizationService:
         
         # Critical indexes for transaction table based on common query patterns
         critical_indexes = {
-            'transaction': [
+            'transactions': [
                 # Single column indexes (already in migration)
                 ('idx_transaction_date', ['date']),
                 ('idx_transaction_created_at', ['created_at']),
@@ -133,19 +133,19 @@ class IndexOptimizationService:
                 ('idx_psp_devir_date_psp', ['date', 'psp_name']),
                 ('idx_psp_devir_psp_date', ['psp_name', 'date']),
             ],
-            'audit_log': [
+            'audit_logs': [
                 ('idx_audit_user_id', ['user_id']),  # Match model definition
                 ('idx_audit_timestamp', ['timestamp']),  # Match model definition
                 ('idx_audit_action', ['action']),  # Match model definition
                 ('idx_audit_user_timestamp', ['user_id', 'timestamp']),  # Composite for common queries - matches model definition
             ],
-            'user_session': [
+            'user_sessions': [
                 ('idx_session_user_id', ['user_id']),
                 ('idx_session_token', ['session_token']),
                 ('idx_session_is_active', ['is_active']),
                 ('idx_session_last_active', ['last_active']),
             ],
-            'login_attempt': [
+            'login_attempts': [
                 ('idx_login_username', ['username']),
                 ('idx_login_timestamp', ['timestamp']),
                 ('idx_login_success', ['success']),

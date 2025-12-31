@@ -9,10 +9,10 @@ import secrets
 
 class PasswordResetToken(db.Model):
     """Password reset token model"""
-    __tablename__ = 'password_reset_token'
+    __tablename__ = 'password_reset_tokens'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     token = db.Column(db.String(64), unique=True, nullable=False, index=True)
     expires_at = db.Column(db.DateTime, nullable=False, index=True)
     used = db.Column(db.Boolean, default=False, nullable=False)

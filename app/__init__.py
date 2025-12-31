@@ -35,6 +35,7 @@ from flask_wtf import CSRFProtect
 from flask_babel import Babel, get_locale, gettext, ngettext
 from flask_cors import CORS
 from flask_compress import Compress
+from flask_jwt_extended import JWTManager
 from datetime import timedelta
 import os
 import traceback
@@ -56,6 +57,7 @@ limiter = Limiter(
 csrf = CSRFProtect()
 babel = Babel()
 compress = Compress()
+jwt = JWTManager()  # JWT for token-based authentication (fallback for cookie issues)
 
 # Legacy in-memory cache for backward compatibility
 # NOTE: Use enhanced_cache_service for new code
@@ -225,10 +227,12 @@ def create_app(config_name=None):
          resources={r"/api/*": {
              "origins": cors_origins,
              "methods": app.config.get('CORS_METHODS', ["GET", "POST", "PUT", "DELETE", "OPTIONS"]),
-             "allow_headers": app.config.get('CORS_ALLOW_HEADERS', ["Content-Type", "Authorization"]),
-             "expose_headers": app.config.get('CORS_EXPOSE_HEADERS', ["Content-Type", "Authorization"]),
+             "allow_headers": app.config.get('CORS_ALLOW_HEADERS', ["Content-Type", "Authorization", "X-Requested-With", "X-CSRFToken", "Accept"]),
+             "expose_headers": app.config.get('CORS_EXPOSE_HEADERS', ["Content-Type", "Authorization", "Set-Cookie"]),
              "supports_credentials": app.config.get('CORS_SUPPORTS_CREDENTIALS', True),
-             "max_age": app.config.get('CORS_MAX_AGE', 600)
+             "max_age": app.config.get('CORS_MAX_AGE', 3600),
+             "send_wildcard": False,
+             "always_send": True
          }}
     )
     
@@ -240,6 +244,16 @@ def create_app(config_name=None):
     login_manager.init_app(app)
     migrate.init_app(app, db)
     socketio.init_app(app, cors_allowed_origins="*", async_mode='threading')
+    jwt.init_app(app)  # Initialize JWT for token-based authentication
+    
+    # Initialize Flask-Session BEFORE other extensions that might use sessions
+    try:
+        from flask_session import Session
+        sess = Session()
+        sess.init_app(app)
+        app.logger.info("Flask-Session initialized successfully")
+    except ImportError:
+        app.logger.warning("Flask-Session not available, using default Flask session")
     
     # Configure rate limiter storage from config
     storage_uri = app.config.get('RATELIMIT_STORAGE_URL', 'memory://')
@@ -351,37 +365,89 @@ def create_app(config_name=None):
     @app.context_processor
     def inject_performance_data():
         """Inject performance data into template context"""
-        return {
-            'cache_stats': advanced_cache.get_stats(),
-            'redis_stats': redis_service.get_stats() if redis_service.is_connected() else {},
-            'background_stats': background_task_service.get_queue_stats() if background_task_service.is_connected() else {},
-            'db_pool_size': db.engine.pool.size() if hasattr(db.engine, 'pool') else 0,
-            'db_pool_checked_in': db.engine.pool.checkedin() if hasattr(db.engine, 'pool') else 0,
-            'db_pool_checked_out': db.engine.pool.checkedout() if hasattr(db.engine, 'pool') else 0,
-        }
+        # Return minimal stats to avoid any potential errors during template rendering
+        # The full performance data is available via API endpoints
+        try:
+            cache_stats = {}
+            redis_stats = {}
+            background_stats = {}
+            pool_size = 0
+            pool_checkedin = 0
+            pool_checkedout = 0
+            
+            # Safely get cache stats
+            try:
+                cache_stats = advanced_cache.get_stats() if advanced_cache else {}
+            except Exception:
+                pass
+            
+            # Safely get redis stats (only if connected)
+            try:
+                if redis_service and redis_service.is_connected():
+                    redis_stats = redis_service.get_stats()
+            except Exception:
+                pass
+            
+            # Skip background_task_service.get_queue_stats() as it can be slow/fail
+            # This data is available via the performance API endpoint
+            
+            # Safely get pool stats
+            try:
+                if hasattr(db.engine, 'pool'):
+                    pool = db.engine.pool
+                    if hasattr(pool, 'size') and callable(pool.size):
+                        pool_size = pool.size()
+                    if hasattr(pool, 'checkedin') and callable(pool.checkedin):
+                        pool_checkedin = pool.checkedin()
+                    if hasattr(pool, 'checkedout') and callable(pool.checkedout):
+                        pool_checkedout = pool.checkedout()
+            except Exception:
+                pass
+            
+            return {
+                'cache_stats': cache_stats,
+                'redis_stats': redis_stats,
+                'background_stats': background_stats,
+                'db_pool_size': pool_size,
+                'db_pool_checked_in': pool_checkedin,
+                'db_pool_checked_out': pool_checkedout,
+            }
+        except Exception:
+            # If there's any error, return empty stats
+            return {
+                'cache_stats': {},
+                'redis_stats': {},
+                'background_stats': {},
+                'db_pool_size': 0,
+                'db_pool_checked_in': 0,
+                'db_pool_checked_out': 0,
+            }
     
-    # Configure session for cross-origin requests in development
-    if app.config.get('DEBUG', False):
-        app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow localhost
-        app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Allow cross-origin requests for React frontend
-        app.config['SESSION_COOKIE_SECURE'] = False  # Allow HTTP in development
-        app.config['SESSION_COOKIE_HTTPONLY'] = True  # Keep HTTPOnly for security, CSRF tokens are handled via API
-        app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is set for all paths
-        # Default session lifetime (overridden per-session in auth.py based on remember_me)
-        # Regular login: 8 hours, Remember me: 30 days
+    # Configure session for cross-origin requests (both development and production)
+    # CRITICAL: These settings must be set for both dev and production
+    is_https = app.config.get('SESSION_COOKIE_SECURE', False)
+    
+    # Session cookie settings - apply to all environments
+    app.config['SESSION_COOKIE_DOMAIN'] = None  # None allows all domains (set specific domain if needed)
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # Lax allows same-site and top-level navigation
+    app.config['SESSION_COOKIE_HTTPONLY'] = True  # Keep HTTPOnly for security
+    app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is set for all paths
+    app.config['SESSION_COOKIE_NAME'] = 'pipelinepro_session'  # Custom session cookie name
+    
+    # Default session lifetime (overridden per-session in auth.py based on remember_me)
+    # Regular login: 8 hours, Remember me: 30 days
+    if 'PERMANENT_SESSION_LIFETIME' not in app.config:
         app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
-        
-        # Enhanced session configuration for React frontend
-        app.config['SESSION_REFRESH_EACH_REQUEST'] = True  # Refresh session on each request
-        app.config['SESSION_COOKIE_NAME'] = 'pipelinepro_session'  # Custom session cookie name
-        # SESSION_COOKIE_MAX_AGE is now set dynamically per session in auth.py based on remember_me
-        
-        # Limit session cookie size by ensuring filesystem session storage is used
-        # Flask-Session stores session data server-side, only session ID goes in cookie
-        app.config['SESSION_TYPE'] = 'filesystem'
-        app.config['SESSION_FILE_DIR'] = 'instance/sessions'
-        app.config['SESSION_FILE_THRESHOLD'] = 500
-        app.config['SESSION_FILE_MODE'] = 0o600  # Secure file permissions
+    
+    # Enhanced session configuration for React frontend
+    app.config['SESSION_REFRESH_EACH_REQUEST'] = True  # Refresh session on each request
+    
+    # Ensure session directory exists for filesystem sessions
+    if app.config.get('SESSION_TYPE') == 'filesystem':
+        import pathlib
+        session_dir = pathlib.Path(app.config.get('SESSION_FILE_DIR', 'instance/sessions'))
+        session_dir.mkdir(parents=True, exist_ok=True)
+        app.logger.info(f"Session directory: {session_dir}")
         
         # CSRF protection configuration
         # Disable CSRF only in development and testing, keep enabled in production
@@ -433,16 +499,12 @@ def create_app(config_name=None):
         from flask import request, jsonify
         
         # Public API endpoints that don't require authentication
-        public_endpoints = [
-            '/api/v1/exchange-rates/current',
-            '/api/v1/health/',
-        ]
+        from app.config.public_endpoints import is_public_endpoint
         
         # Check if this is a public endpoint
-        for public_endpoint in public_endpoints:
-            if request.path.startswith(public_endpoint):
-                # Let the request proceed without authentication
-                return None
+        if is_public_endpoint(request.path):
+            # Let the request proceed without authentication
+            return None
         
         # Check if this is an API request
         if request.path.startswith('/api/'):
@@ -460,7 +522,20 @@ def create_app(config_name=None):
         """Load user for Flask-Login"""
         from app.models.user import User
         try:
-            user = User.query.get(int(user_id))
+            # Try to convert to int, but handle UUID strings gracefully
+            try:
+                user_id_int = int(user_id)
+                user = User.query.get(user_id_int)
+            except (ValueError, TypeError):
+                # If conversion fails, it might be a UUID or other format
+                # Try to query by username or other identifier
+                logger = get_logger("UserLoader")
+                logger.warning(f"User ID {user_id} is not an integer, attempting alternative lookup")
+                user = User.query.filter_by(username=str(user_id)).first()
+                if not user:
+                    # Try as string ID if your User model supports it
+                    user = User.query.filter_by(id=user_id).first()
+            
             if user and user.is_active:
                 return user
             else:
@@ -521,6 +596,7 @@ def create_app(config_name=None):
     from app.api.v1.endpoints.financial_performance import financial_performance_bp
     from app.api.v1.endpoints.notifications import notifications_api
     from app.api.v1.endpoints.accounting import accounting_api
+    from app.api.v1.endpoints.debug_clients import debug_clients_bp
     
     app.register_blueprint(auth_api, url_prefix='/api/v1/auth')
     app.register_blueprint(consolidated_dashboard_api, url_prefix='/api/v1')
@@ -531,6 +607,7 @@ def create_app(config_name=None):
     app.register_blueprint(financial_performance_bp, url_prefix='/api/v1')
     app.register_blueprint(notifications_api, url_prefix='/api/v1')
     app.register_blueprint(accounting_api, url_prefix='/api/v1/accounting')
+    app.register_blueprint(debug_clients_bp, url_prefix='/api/v1')
     
     # Register enhanced monitoring & metrics endpoints
     from app.routes.monitoring import monitoring_bp, setup_prometheus_metrics
@@ -599,13 +676,13 @@ def create_app(config_name=None):
     from flask import send_from_directory
     
     # Get the frontend build directory
-    # Check dist first (standard build output), then dist_prod, then dist_new as fallback
+    # Check dist_new first (current build output), then dist, then dist_prod as fallback
     base_dir = os.path.dirname(os.path.dirname(__file__))
-    frontend_dist = os.path.join(base_dir, 'frontend', 'dist')
+    frontend_dist = os.path.join(base_dir, 'frontend', 'dist_new')
+    if not os.path.exists(frontend_dist):
+        frontend_dist = os.path.join(base_dir, 'frontend', 'dist')
     if not os.path.exists(frontend_dist):
         frontend_dist = os.path.join(base_dir, 'frontend', 'dist_prod')
-    if not os.path.exists(frontend_dist):
-        frontend_dist = os.path.join(base_dir, 'frontend', 'dist_new')
     
     # Log which directory is being used
     app.logger.info(f"Serving frontend from: {frontend_dist}")
@@ -613,23 +690,37 @@ def create_app(config_name=None):
     @app.route('/')
     def root():
         """Root route - serve React frontend or redirect to login"""
-        from flask_login import current_user
-        
-        # Check if frontend build exists
-        index_path = os.path.join(frontend_dist, 'index.html')
-        if os.path.exists(index_path):
-            # Serve React frontend with proper headers
-            response = send_from_directory(frontend_dist, 'index.html')
-            # Ensure proper content type
-            response.headers['Content-Type'] = 'text/html; charset=utf-8'
-            # Disable caching for index.html to ensure fresh content
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
-            return response
-        else:
-            # Fallback: redirect to login API
-            return redirect('/api/v1/docs/')
+        try:
+            # Check if frontend build exists
+            app.logger.info(f"Root route called! frontend_dist={frontend_dist}")
+            index_path = os.path.join(frontend_dist, 'index.html')
+            app.logger.info(f"Root route: checking index at {index_path}")
+            exists = os.path.exists(index_path)
+            app.logger.info(f"Index exists: {exists}")
+            if exists:
+                app.logger.info("Serving index.html")
+                # Serve React frontend with proper headers
+                with open(index_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                from flask import make_response
+                response = make_response(content)
+                # Ensure proper content type
+                response.headers['Content-Type'] = 'text/html; charset=utf-8'
+                # Disable caching for index.html to ensure fresh content
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+                app.logger.info("Returning index.html response")
+                return response
+            else:
+                # Fallback: redirect to login API
+                app.logger.warning(f"Index.html not found at {index_path}, redirecting to docs")
+                return redirect('/api/v1/docs/')
+        except Exception as e:
+            app.logger.error(f"Error in root route: {type(e).__name__}: {e}")
+            import traceback
+            app.logger.error(traceback.format_exc())
+            raise
     
     # Explicit route for JS chunks to ensure proper serving
     @app.route('/js/<path:filename>')
@@ -639,27 +730,43 @@ def create_app(config_name=None):
         start_time = time.time()
         request_id = f"js_{int(time.time() * 1000)}"
         
+        # Get base_dir for fallback
+        base_dir_local = os.path.dirname(os.path.dirname(__file__))
+        current_frontend_dist = frontend_dist
+        
         app.logger.info(f"[{request_id}] ========== JS CHUNK REQUEST START ==========")
         app.logger.info(f"[{request_id}] Requested filename: {filename}")
-        app.logger.info(f"[{request_id}] Frontend dist directory: {frontend_dist}")
+        app.logger.info(f"[{request_id}] Frontend dist directory: {current_frontend_dist}")
         app.logger.info(f"[{request_id}] Request headers: {dict(request.headers)}")
         app.logger.info(f"[{request_id}] Request method: {request.method}")
         app.logger.info(f"[{request_id}] Request URL: {request.url}")
         app.logger.info(f"[{request_id}] Request remote_addr: {request.remote_addr}")
         
-        js_path = os.path.join(frontend_dist, 'js', filename)
+        js_path = os.path.join(current_frontend_dist, 'js', filename)
         app.logger.info(f"[{request_id}] Full JS path: {js_path}")
         app.logger.info(f"[{request_id}] Path exists: {os.path.exists(js_path)}")
         app.logger.info(f"[{request_id}] Path is file: {os.path.isfile(js_path) if os.path.exists(js_path) else 'N/A'}")
+        
+        # Fallback: check dist if not found in dist_new
+        if not os.path.exists(js_path) or not os.path.isfile(js_path):
+            dist_fallback = os.path.join(base_dir_local, 'frontend', 'dist', 'js', filename)
+            if os.path.exists(dist_fallback) and os.path.isfile(dist_fallback):
+                app.logger.info(f"[{request_id}] Using fallback path: {dist_fallback}")
+                js_path = dist_fallback
+                current_frontend_dist = os.path.join(base_dir_local, 'frontend', 'dist')
         
         if os.path.exists(js_path) and os.path.isfile(js_path):
             try:
                 file_size = os.path.getsize(js_path)
                 app.logger.info(f"[{request_id}] File size: {file_size} bytes")
                 
-                response = send_from_directory(os.path.join(frontend_dist, 'js'), filename)
+                response = send_from_directory(os.path.join(current_frontend_dist, 'js'), filename)
                 response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
                 response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                # Add CORS headers for module loading
+                response.headers['Access-Control-Allow-Origin'] = '*'
+                response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
                 
                 elapsed = time.time() - start_time
                 app.logger.info(f"[{request_id}] ✅ SUCCESS - Serving file in {elapsed:.3f}s")
@@ -674,7 +781,7 @@ def create_app(config_name=None):
                 return jsonify({'error': f'Error serving JS chunk: {str(e)}'}), 500
         
         # File not found - log directory contents
-        js_dir = os.path.join(frontend_dist, 'js')
+        js_dir = os.path.join(current_frontend_dist, 'js')
         app.logger.error(f"[{request_id}] ❌ JS chunk not found: {filename}")
         app.logger.error(f"[{request_id}] JS directory exists: {os.path.exists(js_dir)}")
         if os.path.exists(js_dir):
@@ -695,9 +802,21 @@ def create_app(config_name=None):
     @app.route('/css/<path:filename>')
     def serve_css(filename):
         """Serve CSS files with proper headers"""
-        css_path = os.path.join(frontend_dist, 'css', filename)
+        # Get base_dir for fallback
+        base_dir_local = os.path.dirname(os.path.dirname(__file__))
+        current_frontend_dist = frontend_dist
+        
+        css_path = os.path.join(current_frontend_dist, 'css', filename)
+        # Fallback: check dist if not found in dist_new
+        if not os.path.exists(css_path) or not os.path.isfile(css_path):
+            dist_fallback = os.path.join(base_dir_local, 'frontend', 'dist', 'css', filename)
+            if os.path.exists(dist_fallback) and os.path.isfile(dist_fallback):
+                app.logger.info(f"Using CSS fallback path: {dist_fallback}")
+                css_path = dist_fallback
+                current_frontend_dist = os.path.join(base_dir_local, 'frontend', 'dist')
+            
         if os.path.exists(css_path) and os.path.isfile(css_path):
-            response = send_from_directory(os.path.join(frontend_dist, 'css'), filename)
+            response = send_from_directory(os.path.join(current_frontend_dist, 'css'), filename)
             response.headers['Content-Type'] = 'text/css; charset=utf-8'
             response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
             return response
@@ -1151,15 +1270,16 @@ def create_app(config_name=None):
     @app.errorhandler(Exception)
     def handle_unexpected_error(error):
         """Handle unexpected errors with unified logging and better error messages"""
+        # Import at the top to ensure availability
+        from flask import jsonify, current_app, request
+        from app.utils.unified_logger import get_logger
+        import traceback
+        
         # Rollback database session on error
         try:
             db.session.rollback()
         except Exception as rollback_error:
             pass
-        
-        from flask import jsonify
-        from app.utils.unified_logger import get_logger
-        import traceback
         
         error_logger = get_logger("ErrorHandler")
         error_logger.error(f"Unexpected error: {type(error).__name__}: {error}")
@@ -1226,7 +1346,11 @@ def create_app(config_name=None):
         
         # Handle other unexpected errors
         # SECURITY: Never expose internal error details in production
-        is_debug = current_app.config.get('DEBUG', False)
+        try:
+            is_debug = current_app.config.get('DEBUG', False)
+        except (RuntimeError, AttributeError):
+            # If current_app is not available (e.g., outside request context), default to False
+            is_debug = False
         
         if request.path.startswith('/api/'):
             error_message = 'An unexpected error occurred. Please try again.'

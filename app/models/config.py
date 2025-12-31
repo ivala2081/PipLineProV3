@@ -11,9 +11,9 @@ from app.services.decimal_float_fix_service import decimal_float_service
 
 class Option(db.Model):
     """Configurable dropdown options"""
-    __tablename__ = 'option'
+    __tablename__ = 'options'
     
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(36), primary_key=True)  # UUID stored as string
     field_name = db.Column(db.String(50), nullable=False)
     value = db.Column(db.String(100), nullable=False)
     commission_rate = db.Column(db.Numeric(5, 4), nullable=True)
@@ -123,7 +123,7 @@ class UserSettings(db.Model):
     __tablename__ = 'user_settings'
     
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
     language = db.Column(db.String(20), default='en')
     landing_page = db.Column(db.String(50), default='dashboard')
     table_page_size = db.Column(db.Integer, default=25)
@@ -196,7 +196,7 @@ class UserSettings(db.Model):
 
 class AdminSectionPermission(db.Model):
     """Admin section permissions - controls which sections are accessible to different admin levels"""
-    __tablename__ = 'admin_section_permission'
+    __tablename__ = 'admin_section_permissions'
     
     id = db.Column(db.Integer, primary_key=True)
     section_name = db.Column(db.String(100), nullable=False, unique=True)

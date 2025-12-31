@@ -26,6 +26,8 @@ export class ApiClient {
   private onUnauthorizedCallback: (() => void) | null = null;
   private unauthorizedAttempts: Map<string, number> = new Map(); // Track 401/403 attempts per endpoint
   private readonly MAX_UNAUTHORIZED_ATTEMPTS = 2; // Allow 2 attempts before redirecting
+  private clientLogThrottle: Map<string, number> = new Map(); // Throttle client-log calls
+  private readonly CLIENT_LOG_THROTTLE_MS = 2000; // Only log once per 2 seconds per location
 
   constructor(baseUrl: string = '/api/v1', options: ApiClientOptions = {}) {
     this.baseUrl = baseUrl;
@@ -43,6 +45,40 @@ export class ApiClient {
    */
   setOnUnauthorized(callback: () => void) {
     this.onUnauthorizedCallback = callback;
+  }
+
+  /**
+   * Throttled client log - only log once per CLIENT_LOG_THROTTLE_MS per location
+   */
+  private sendClientLog(location: string, message: string, data: any): void {
+    if (!import.meta.env.DEV) return; // Only in development
+    
+    const now = Date.now();
+    const lastCall = this.clientLogThrottle.get(location) || 0;
+    
+    // Throttle: only send if enough time has passed
+    if (now - lastCall < this.CLIENT_LOG_THROTTLE_MS) {
+      return; // Skip this log call
+    }
+    
+    // Update throttle timestamp
+    this.clientLogThrottle.set(location, now);
+    
+    // Send log (fire and forget)
+    fetch('/api/v1/monitoring/client-log', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location,
+        message,
+        data,
+        timestamp: now,
+        sessionId: 'debug-session',
+        runId: 'run1',
+        hypothesisId: 'B'
+      })
+    }).catch(() => {}); // Ignore errors
   }
 
   /**
@@ -180,17 +216,31 @@ export class ApiClient {
       const controller = this.createTimeoutController(opts.timeout);
 
       try {
-        // #region agent log (dev only)
-        if (import.meta.env.DEV) {
-          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:get:start',message:'API GET start',data:{url,timeout:opts.timeout,retries:opts.retries,hasCsrf:!!localStorage.getItem('csrf_token')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        }
+        // #region agent log (dev only - throttled)
+        this.sendClientLog('apiClient.ts:get:start', 'API GET start', {
+          url,
+          timeout: opts.timeout,
+          retries: opts.retries,
+          hasCsrf: !!localStorage.getItem('csrf_token')
+        });
         // #endregion
+        // ALTERNATIVE APPROACH: Add JWT token to Authorization header if available
+        const authToken = localStorage.getItem('auth_token');
+        const tokenType = localStorage.getItem('auth_token_type') || 'Bearer';
+        
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        };
+        
+        // Add JWT token to Authorization header if available (fallback for cookie issues)
+        if (authToken) {
+          headers['Authorization'] = `${tokenType} ${authToken}`;
+        }
+        
         const response = await fetch(url, {
           method: 'GET',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           signal: controller.signal,
         });
 
@@ -199,10 +249,12 @@ export class ApiClient {
           if (response.status === 401 || response.status === 403) {
             this.handleUnauthorized(url, response.status);
           }
-          // #region agent log (dev only)
-          if (import.meta.env.DEV) {
-            fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:get:non-ok',message:'API GET non-ok response',data:{url,status:response.status,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          }
+          // #region agent log (dev only - throttled)
+          this.sendClientLog('apiClient.ts:get:non-ok', 'API GET non-ok response', {
+            url,
+            status: response.status,
+            ok: response.ok
+          });
           // #endregion
           const error: any = new Error(`HTTP error! status: ${response.status}`);
           error.status = response.status;
@@ -234,10 +286,13 @@ export class ApiClient {
           ok: response.ok, // Include ok status for compatibility
         };
       } catch (error: any) {
-        // #region agent log (dev only)
-        if (import.meta.env.DEV) {
-          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:get:error',message:'API GET threw',data:{url,errorMessage:error?.message||String(error),name:error?.name,status:error?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C'})}).catch(()=>{});
-        }
+        // #region agent log (dev only - throttled)
+        this.sendClientLog('apiClient.ts:get:error', 'API GET threw', {
+          url,
+          errorMessage: error?.message || String(error),
+          name: error?.name,
+          status: error?.status
+        });
         // #endregion
         throw this.handleError(error, url);
       }
@@ -261,19 +316,34 @@ export class ApiClient {
       try {
         // CSRF token'i localStorage'dan al
         const csrfToken = localStorage.getItem('csrf_token');
-        // #region agent log (dev only)
-        if (import.meta.env.DEV) {
-          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:post:start',message:'API POST start',data:{url,timeout:opts.timeout,retries:opts.retries,hasCsrf:!!csrfToken,bodyType:typeof body},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        }
+        // #region agent log (dev only - throttled)
+        this.sendClientLog('apiClient.ts:post:start', 'API POST start', {
+          url,
+          timeout: opts.timeout,
+          retries: opts.retries,
+          hasCsrf: !!csrfToken,
+          bodyType: typeof body
+        });
         // #endregion
+        
+        // ALTERNATIVE APPROACH: Add JWT token to Authorization header if available
+        const authToken = localStorage.getItem('auth_token');
+        const tokenType = localStorage.getItem('auth_token_type') || 'Bearer';
+        
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        };
+        
+        // Add JWT token to Authorization header if available (fallback for cookie issues)
+        if (authToken) {
+          headers['Authorization'] = `${tokenType} ${authToken}`;
+        }
         
         const response = await fetch(url, {
           method: 'POST',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-          },
+          headers,
           body: JSON.stringify(body),
           signal: controller.signal,
         });
@@ -297,10 +367,12 @@ export class ApiClient {
           if (response.status === 401 || response.status === 403) {
             this.handleUnauthorized(url, response.status);
           }
-          // #region agent log (dev only)
-          if (import.meta.env.DEV) {
-            fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:post:non-ok',message:'API POST non-ok response',data:{url,status:response.status,ok:response.ok},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-          }
+          // #region agent log (dev only - throttled)
+          this.sendClientLog('apiClient.ts:post:non-ok', 'API POST non-ok response', {
+            url,
+            status: response.status,
+            ok: response.ok
+          });
           // #endregion
           
           // Return error response with data so caller can access error message
@@ -319,13 +391,16 @@ export class ApiClient {
           data,
           status: response.status,
           headers: response.headers,
-          ok: true,
+          ok: response.ok, // Use response.ok which correctly handles 2xx status codes including 201
         };
       } catch (error: any) {
-        // #region agent log (dev only)
-        if (import.meta.env.DEV) {
-          fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'apiClient.ts:post:error',message:'API POST threw',data:{url,errorMessage:error?.message||String(error),name:error?.name,status:error?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C'})}).catch(()=>{});
-        }
+        // #region agent log (dev only - throttled)
+        this.sendClientLog('apiClient.ts:post:error', 'API POST threw', {
+          url,
+          errorMessage: error?.message || String(error),
+          name: error?.name,
+          status: error?.status
+        });
         // #endregion
         throw this.handleError(error, url);
       }
@@ -349,14 +424,24 @@ export class ApiClient {
       try {
         // CSRF token'i localStorage'dan al
         const csrfToken = localStorage.getItem('csrf_token');
+        // ALTERNATIVE APPROACH: Add JWT token to Authorization header if available
+        const authToken = localStorage.getItem('auth_token');
+        const tokenType = localStorage.getItem('auth_token_type') || 'Bearer';
+        
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        };
+        
+        // Add JWT token to Authorization header if available (fallback for cookie issues)
+        if (authToken) {
+          headers['Authorization'] = `${tokenType} ${authToken}`;
+        }
         
         const response = await fetch(url, {
           method: 'PUT',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-          },
+          headers,
           body: JSON.stringify(body),
           signal: controller.signal,
         });
@@ -418,14 +503,24 @@ export class ApiClient {
       try {
         // CSRF token'i localStorage'dan al
         const csrfToken = localStorage.getItem('csrf_token');
+        // ALTERNATIVE APPROACH: Add JWT token to Authorization header if available
+        const authToken = localStorage.getItem('auth_token');
+        const tokenType = localStorage.getItem('auth_token_type') || 'Bearer';
+        
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        };
+        
+        // Add JWT token to Authorization header if available (fallback for cookie issues)
+        if (authToken) {
+          headers['Authorization'] = `${tokenType} ${authToken}`;
+        }
         
         const response = await fetch(url, {
           method: 'DELETE',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
-          },
+          headers,
           ...(body ? { body: JSON.stringify(body) } : {}),
           signal: controller.signal,
         });
@@ -553,6 +648,19 @@ export class ApiClient {
     } catch (error) {
       logger.error('Error clearing cache for URL:', error);
     }
+  }
+
+  /**
+   * Make batched request (wrapper for get method for compatibility)
+   * The batchKey parameter is ignored but kept for API compatibility
+   */
+  async makeBatchedRequest<T>(
+    endpoint: string,
+    options: ApiClientOptions = {},
+    batchKey?: string
+  ): Promise<T> {
+    const response = await this.get<T>(endpoint, options);
+    return this.parseResponse(response);
   }
 
   /**

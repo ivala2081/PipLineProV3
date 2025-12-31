@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '../../lib/utils'
 
 interface MobileTableProps {
   children: ReactNode
@@ -8,7 +8,7 @@ interface MobileTableProps {
 
 export function MobileTable({ children, className }: MobileTableProps) {
   return (
-    <div className={cn("block md:hidden", className)}>
+    <div className={cn("block overflow-x-auto", className)}>
       {children}
     </div>
   )

@@ -141,20 +141,61 @@ def get_csrf_token():
 @auth_api.route('/check', methods=['GET'])
 @limiter.limit("120 per minute, 5000 per hour")  # Increased - lightweight session checks need higher limits
 def check_auth():
-    """Check if user is authenticated - with enhanced error handling"""
+    """Check if user is authenticated - with enhanced error handling and JWT fallback"""
     try:
-        # Safe access to current_user
+        # ALTERNATIVE APPROACH: Check JWT token first (works even if cookies fail)
+        jwt_user = None
+        try:
+            from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
+            from app.models.user import User
+            
+            # Try to verify JWT token from Authorization header
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                try:
+                    verify_jwt_in_request(optional=True)  # Optional - don't fail if no JWT
+                    user_id = get_jwt_identity()
+                    if user_id:
+                        jwt_user = User.query.get(user_id)
+                        if jwt_user and jwt_user.is_active:
+                            logger.info(f"Auth check - JWT token valid for user {jwt_user.username}")
+                            # Return authenticated with JWT user
+                            try:
+                                user_dict = jwt_user.to_dict()
+                            except Exception as e:
+                                user_dict = {
+                                    'id': jwt_user.id,
+                                    'username': jwt_user.username,
+                                    'role': jwt_user.role
+                                }
+                            return jsonify({
+                                'authenticated': True,
+                                'user': user_dict,
+                                'auth_method': 'jwt'
+                            }), 200
+                except Exception as jwt_error:
+                    logger.debug(f"JWT verification failed (expected if no token): {str(jwt_error)}")
+        except ImportError:
+            logger.debug("JWT not available, using session only")
+        except Exception as jwt_check_error:
+            logger.debug(f"JWT check error: {str(jwt_check_error)}")
+        
+        # ALWAYS log session info for debugging (even in production for troubleshooting)
+        logger.info(f"Auth check - session keys: {list(session.keys())}")
+        logger.info(f"Auth check - session_token in session: {'session_token' in session}")
+        logger.info(f"Auth check - session cookie name: {current_app.config.get('SESSION_COOKIE_NAME', 'session')}")
+        
+        # Safe access to current_user (session-based)
         try:
             is_authenticated = current_user.is_authenticated if hasattr(current_user, 'is_authenticated') else False
+            logger.info(f"Auth check - is_authenticated: {is_authenticated}, user: {getattr(current_user, 'username', 'anonymous')}")
         except Exception as user_error:
             logger.warning(f"Error accessing current_user: {str(user_error)}")
             is_authenticated = False
         
-        # Add debugging information (only in debug mode)
-        if current_app.config.get('DEBUG'):
-            logger.debug(f"Auth check - current_user: {current_user}")
-            logger.debug(f"Auth check - is_authenticated: {is_authenticated}")
-            logger.debug(f"Auth check - session keys: {list(session.keys())}")
+        # Add debugging information (always log for troubleshooting)
+        logger.debug(f"Auth check - current_user: {current_user}")
+        logger.debug(f"Auth check - session keys: {list(session.keys())}")
         
         if is_authenticated:
             # Check session timeout - with safe error handling
@@ -367,11 +408,56 @@ def api_login():
                         'role': user.role
                     }
 
-                return jsonify({
+                # ALTERNATIVE APPROACH: Generate JWT token for token-based auth
+                # This works even if cookies fail due to CORS or domain issues
+                jwt_token = None
+                try:
+                    from flask_jwt_extended import create_access_token
+                    # Create JWT token that expires based on remember_me
+                    expires_delta = timedelta(days=30) if remember_me else timedelta(hours=8)
+                    jwt_token = create_access_token(
+                        identity=user.id,
+                        additional_claims={
+                            'username': user.username,
+                            'role': user.role,
+                            'is_active': user.is_active
+                        },
+                        expires_delta=expires_delta
+                    )
+                    logger.info(f"JWT token generated for user {username}")
+                except Exception as jwt_error:
+                    logger.warning(f"Failed to generate JWT token: {str(jwt_error)}")
+                    # Continue without JWT - session should still work
+
+                # CRITICAL FIX: Explicitly set session cookie in response
+                # This ensures the cookie is sent even if there are CORS or domain issues
+                response_data = {
                     'success': True,
                     'message': f'Welcome back, {user.username}!',
                     'user': user_dict
-                }), 200
+                }
+                
+                # Add JWT token to response if generated (for token-based auth fallback)
+                if jwt_token:
+                    response_data['token'] = jwt_token
+                    response_data['token_type'] = 'Bearer'
+                
+                response = jsonify(response_data)
+                
+                # Mark session as modified to ensure Flask-Session saves it
+                session.modified = True
+                
+                # Explicitly set cookie attributes to ensure it's sent
+                from flask import make_response
+                response = make_response(response)
+                
+                # Log session info for debugging
+                logger.info(f"Login successful for {username}, session_token: {session.get('session_token', 'NOT SET')}")
+                logger.info(f"Session permanent: {session.permanent}, lifetime: {session.permanent_session_lifetime}")
+                if jwt_token:
+                    logger.info(f"JWT token also provided as fallback authentication")
+                
+                return response, 200
             else:
                 # Failed login - wrong password
                 try:
@@ -722,6 +808,17 @@ def reset_password():
             }), 404
         
         # Update password
+        # SECURITY: Enforce password complexity validation
+        from app.services.security_service import SecurityService
+        security_service = SecurityService()
+        password_validation = security_service.validate_password_strength(new_password)
+        if not password_validation.get('is_valid', False):
+            issues = password_validation.get('issues', [])
+            return jsonify({
+                'error': 'Password validation failed',
+                'message': f"Password does not meet security requirements: {', '.join(issues)}"
+            }), 400
+        
         user.password = generate_password_hash(new_password)
         user.password_changed_at = datetime.now(timezone.utc)
         user.failed_login_attempts = 0  # Reset failed attempts
@@ -744,4 +841,42 @@ def reset_password():
         db.session.rollback()
         return jsonify({
             'error': 'An error occurred while resetting your password. Please try again.'
-        }), 500 
+        }), 500
+
+
+# Add CORS headers to all auth responses for cross-origin requests
+@auth_api.after_request
+def add_cors_headers(response):
+    """Add CORS headers to all auth API responses"""
+    # Get allowed origins from config
+    allowed_origins = current_app.config.get('CORS_ORIGINS', [])
+    origin = request.headers.get('Origin')
+    
+    # Check if origin is allowed
+    if origin and origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, X-CSRFToken, Accept'
+        response.headers['Access-Control-Expose-Headers'] = 'Content-Type, Authorization, Set-Cookie'
+        response.headers['Access-Control-Max-Age'] = '3600'
+    
+    # Ensure cookies can be set cross-origin
+    if 'Set-Cookie' in response.headers:
+        # Make sure SameSite is set correctly based on environment
+        is_https = current_app.config.get('SESSION_COOKIE_SECURE', False)
+        samesite = 'None' if is_https else 'Lax'
+        
+        # Update Set-Cookie headers with proper SameSite attribute
+        cookies = response.headers.getlist('Set-Cookie')
+        response.headers.remove('Set-Cookie')
+        for cookie in cookies:
+            # Add SameSite if not present
+            if 'SameSite=' not in cookie:
+                cookie += f'; SameSite={samesite}'
+            # Add Secure if HTTPS
+            if is_https and 'Secure' not in cookie:
+                cookie += '; Secure'
+            response.headers.add('Set-Cookie', cookie)
+    
+    return response 

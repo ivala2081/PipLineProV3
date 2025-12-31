@@ -120,6 +120,7 @@ class QueryOptimizer:
         """Optimized daily revenue query with proper indexing"""
         cache_key = f"daily_revenue_{days}"
         
+        # SECURITY: Use parameterized query to prevent SQL injection
         query = """
         SELECT 
             date,
@@ -128,12 +129,13 @@ class QueryOptimizer:
             AVG(amount) as avg_transaction,
             COUNT(DISTINCT client_name) as unique_clients
         FROM "transaction" 
-        WHERE date >= date('now', '-{} days')
+        WHERE date >= date('now', '-' || :days || ' days')
         GROUP BY date 
         ORDER BY date DESC
-        """.format(days)
+        """
+        params = {'days': days}
         
-        return self.execute_optimized_query(query, cache_key=cache_key)
+        return self.execute_optimized_query(query, params=params, cache_key=cache_key)
     
     def get_psp_performance_optimized(self, start_date: str = None, end_date: str = None) -> List[Dict[str, Any]]:
         """Optimized PSP performance query"""

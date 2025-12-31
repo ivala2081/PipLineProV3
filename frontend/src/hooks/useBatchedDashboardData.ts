@@ -59,14 +59,14 @@ export const useBatchedDashboardData = (
         ledgerData,
         pspSummaryStats
       ] = await Promise.all([
-        api.makeBatchedRequest(`/api/v1/analytics/dashboard/stats?range=${timeRange}`, {}, batchKey),
-        api.makeBatchedRequest('/api/v1/analytics/system/performance', {}, batchKey),
-        api.makeBatchedRequest('/api/v1/analytics/data/quality', {}, batchKey),
-        api.makeBatchedRequest('/api/v1/analytics/security/metrics', {}, batchKey),
-        api.makeBatchedRequest(`/api/v1/analytics/commission/analytics?range=${timeRange}`, {}, batchKey),
-        api.makeBatchedRequest('/api/v1/exchange-rates/rates', {}, batchKey),
-        api.makeBatchedRequest(`/api/v1/analytics/clients/analytics?range=${timeRange}`, {}, batchKey),
-        api.makeBatchedRequest('/api/v1/analytics/ledger-data', {}, batchKey),
+        api.makeBatchedRequest(`/analytics/dashboard/stats?range=${timeRange}`, {}, batchKey),
+        api.makeBatchedRequest('/analytics/system/performance', {}, batchKey),
+        api.makeBatchedRequest('/analytics/data/quality', {}, batchKey),
+        api.makeBatchedRequest('/analytics/security/metrics', {}, batchKey),
+        api.makeBatchedRequest(`/analytics/commission/analytics?range=${timeRange}`, {}, batchKey),
+        api.makeBatchedRequest('/exchange-rates/rates', {}, batchKey),
+        api.makeBatchedRequest(`/analytics/clients/analytics?range=${timeRange}`, {}, batchKey),
+        api.makeBatchedRequest('/analytics/ledger-data', {}, batchKey),
         api.makeBatchedRequest('/transactions/psp_summary_stats', {}, batchKey)
       ]);
 
@@ -120,7 +120,7 @@ export const useBatchedStats = (timeRange: string = 'all') => {
     try {
       const batchKey = `stats-${timeRange}-${Date.now()}`;
       const stats = await api.makeBatchedRequest(
-        `/api/v1/analytics/dashboard/stats?range=${timeRange}`,
+        `/analytics/dashboard/stats?range=${timeRange}`,
         {},
         batchKey
       );
@@ -151,7 +151,7 @@ export const useBatchedSystemPerformance = () => {
     try {
       const batchKey = `performance-${Date.now()}`;
       const performance = await api.makeBatchedRequest(
-        '/api/v1/analytics/system/performance',
+        '/analytics/system/performance',
         {},
         batchKey
       );
@@ -182,9 +182,9 @@ export const useBatchedAnalytics = (timeRange: string = 'all') => {
     try {
       const batchKey = `analytics-${timeRange}-${Date.now()}`;
       const [dataQuality, securityMetrics, commissionAnalytics] = await Promise.all([
-        api.makeBatchedRequest('/api/v1/analytics/data/quality', {}, batchKey),
-        api.makeBatchedRequest('/api/v1/analytics/security/metrics', {}, batchKey),
-        api.makeBatchedRequest(`/api/v1/analytics/commission/analytics?range=${timeRange}`, {}, batchKey)
+        api.makeBatchedRequest('/analytics/data/quality', {}, batchKey),
+        api.makeBatchedRequest('/analytics/security/metrics', {}, batchKey),
+        api.makeBatchedRequest(`/analytics/commission/analytics?range=${timeRange}`, {}, batchKey)
       ]);
 
       setData({

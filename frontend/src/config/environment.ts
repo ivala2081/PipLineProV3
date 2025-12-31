@@ -28,7 +28,9 @@ export const isTest = (): boolean => config.environment === 'test';
 
 // API configuration
 export const apiConfig = {
-  baseURL: config.apiBaseUrl || (isDevelopment() ? 'http://localhost:5000' : ''),
+  // In production, use relative path to work with any domain
+  // In development, use explicit localhost URL for Vite proxy
+  baseURL: config.apiBaseUrl || (isDevelopment() ? 'http://localhost:5000' : '/api/v1'),
   timeout: 30000,
   retryAttempts: 3,
   retryDelay: 1000,

@@ -20,6 +20,10 @@ logger = get_logger("MonitoringAPI")
 
 monitoring_api = Blueprint('monitoring_api', __name__)
 
+# CSRF protection exemption for monitoring endpoints (debug logging doesn't need CSRF)
+from app import csrf, limiter
+csrf.exempt(monitoring_api)
+
 
 @monitoring_api.route('/summary')
 @login_required
@@ -209,11 +213,13 @@ def get_top_violators():
 
 
 @monitoring_api.route('/client-log', methods=['POST'])
+@limiter.exempt  # Exempt from rate limiting - debug endpoint called frequently
 @handle_api_errors
 def ingest_client_log():
     """
     Receive frontend debug logs and append as NDJSON lines to .cursor/debug.log.
     This avoids browser mixed-content/CORS issues by using same-origin requests.
+    Debug endpoint - exempt from rate limiting to avoid blocking development logs.
     """
     payload = request.get_json(silent=True) or {}
 

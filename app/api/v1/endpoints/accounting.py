@@ -45,7 +45,7 @@ def get_expenses():
         # Check if expense table exists, create if it doesn't
         try:
             # Try to query the table to see if it exists
-            db.session.execute(text("SELECT 1 FROM expense LIMIT 1"))
+            db.session.execute(text("SELECT 1 FROM expenses LIMIT 1"))
         except Exception as table_error:
             # Table doesn't exist, create it
             error_str = str(table_error).lower()
@@ -61,12 +61,16 @@ def get_expenses():
                     # Fallback: try raw SQL
                     try:
                         create_sql = """
-                        CREATE TABLE IF NOT EXISTS expense (
+                        CREATE TABLE IF NOT EXISTS expenses (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             description VARCHAR(200) NOT NULL,
                             detail TEXT,
+                            category VARCHAR(20) NOT NULL DEFAULT 'inflow',
+                            type VARCHAR(20) NOT NULL DEFAULT 'payment',
                             amount_try NUMERIC(15, 2) NOT NULL DEFAULT 0.0,
                             amount_usd NUMERIC(15, 2) NOT NULL DEFAULT 0.0,
+                            amount_usdt NUMERIC(15, 2) NOT NULL DEFAULT 0.0,
+                            mount_currency VARCHAR(10),
                             status VARCHAR(20) NOT NULL DEFAULT 'pending',
                             cost_period VARCHAR(50),
                             payment_date DATE,
@@ -75,7 +79,9 @@ def get_expenses():
                             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                             created_by INTEGER,
-                            FOREIGN KEY (created_by) REFERENCES user(id)
+                            organization_id INTEGER,
+                            FOREIGN KEY (created_by) REFERENCES users(id),
+                            FOREIGN KEY (organization_id) REFERENCES organizations(id)
                         );
                         """
                         db.session.execute(text(create_sql))
@@ -197,7 +203,10 @@ def get_daily_expenses():
         return jsonify({"success": False, "error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
     # Check if saved data exists for this date
-    saved_net = DailyNet.query.filter_by(date=target_date).first()
+    # Multi-tenancy: Apply organization filter
+    query = DailyNet.query.filter_by(date=target_date)
+    query = add_tenant_filter(query, DailyNet)
+    saved_net = query.first()
     
     if saved_net:
         return jsonify({
@@ -512,7 +521,10 @@ def get_daily_net():
         return jsonify({"success": False, "error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
     # Check if saved data exists for this date
-    saved_net = DailyNet.query.filter_by(date=target_date).first()
+    # Multi-tenancy: Apply organization filter
+    query = DailyNet.query.filter_by(date=target_date)
+    query = add_tenant_filter(query, DailyNet)
+    saved_net = query.first()
     
     # Optional overrides supplied by client for initial iteration
     expenses_usd_param = request.args.get("expenses_usd")
@@ -766,6 +778,9 @@ def get_net_history():
         
         query = DailyNet.query
         
+        # Multi-tenancy: Apply organization filter
+        query = add_tenant_filter(query, DailyNet)
+        
         if start_date:
             try:
                 start = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -821,7 +836,10 @@ def delete_daily_net(date):
             return jsonify({"success": False, "error": "Invalid date format. Use YYYY-MM-DD"}), 400
         
         # Find and delete record
-        daily_net = DailyNet.query.filter_by(date=target_date).first()
+        # Multi-tenancy: Apply organization filter
+        query = DailyNet.query.filter_by(date=target_date)
+        query = add_tenant_filter(query, DailyNet)
+        daily_net = query.first()
         
         if not daily_net:
             return jsonify({"success": False, "error": "No record found for this date"}), 404
@@ -857,6 +875,9 @@ def get_budgets():
         is_active = request.args.get("is_active")
         
         query = ExpenseBudget.query
+        
+        # Multi-tenancy: Apply organization filter
+        query = add_tenant_filter(query, ExpenseBudget)
         
         if budget_period:
             query = query.filter(ExpenseBudget.budget_period == budget_period)
@@ -894,6 +915,12 @@ def get_budget(budget_id):
     """Get a specific budget by ID"""
     try:
         budget = ExpenseBudget.query.get_or_404(budget_id)
+        
+        # Multi-tenancy: Validate access
+        is_valid, error = validate_tenant_access(budget, "budget")
+        if not is_valid:
+            return error
+        
         return jsonify({
             "success": True,
             "budget": budget.to_dict()
@@ -984,6 +1011,12 @@ def update_budget(budget_id):
     """Update an existing budget"""
     try:
         budget = ExpenseBudget.query.get_or_404(budget_id)
+        
+        # Multi-tenancy: Validate access
+        is_valid, error = validate_tenant_access(budget, "budget")
+        if not is_valid:
+            return error
+        
         data = request.get_json()
         
         if not data:
@@ -1039,6 +1072,12 @@ def delete_budget(budget_id):
     """Delete a budget"""
     try:
         budget = ExpenseBudget.query.get_or_404(budget_id)
+        
+        # Multi-tenancy: Validate access
+        is_valid, error = validate_tenant_access(budget, "budget")
+        if not is_valid:
+            return error
+        
         db.session.delete(budget)
         db.session.commit()
         
@@ -1316,7 +1355,10 @@ def get_monthly_currency_summary(month_period):
             return jsonify({"success": False, "error": "Invalid month format. Use YYYY-MM"}), 400
         
         # Get saved data for this month
-        summaries = MonthlyCurrencySummary.query.filter_by(month_period=month_period).all()
+        # Multi-tenancy: Apply organization filter
+        query = MonthlyCurrencySummary.query.filter_by(month_period=month_period)
+        query = add_tenant_filter(query, MonthlyCurrencySummary)
+        summaries = query.all()
         
         if summaries:
             # Return saved data
@@ -1454,7 +1496,10 @@ def lock_monthly_currency_summary(month_period):
             return jsonify({"success": False, "error": "Invalid month format. Use YYYY-MM"}), 400
         
         # Get all summaries for this month
-        summaries = MonthlyCurrencySummary.query.filter_by(month_period=month_period).all()
+        # Multi-tenancy: Apply organization filter
+        query = MonthlyCurrencySummary.query.filter_by(month_period=month_period)
+        query = add_tenant_filter(query, MonthlyCurrencySummary)
+        summaries = query.all()
         
         if not summaries:
             return jsonify({
@@ -1500,7 +1545,10 @@ def unlock_monthly_currency_summary(month_period):
             return jsonify({"success": False, "error": "Invalid month format. Use YYYY-MM"}), 400
         
         # Get all summaries for this month
-        summaries = MonthlyCurrencySummary.query.filter_by(month_period=month_period).all()
+        # Multi-tenancy: Apply organization filter
+        query = MonthlyCurrencySummary.query.filter_by(month_period=month_period)
+        query = add_tenant_filter(query, MonthlyCurrencySummary)
+        summaries = query.all()
         
         if not summaries:
             return jsonify({
@@ -1538,9 +1586,15 @@ def get_saved_months():
     """Get list of months that have saved currency summaries"""
     try:
         # Get distinct month periods
+        # Multi-tenancy: Apply organization filter
+        query = MonthlyCurrencySummary.query
+        query = add_tenant_filter(query, MonthlyCurrencySummary)
+        
         months = db.session.query(
             MonthlyCurrencySummary.month_period,
             MonthlyCurrencySummary.is_locked
+        ).filter(
+            MonthlyCurrencySummary.id.in_([m.id for m in query.all()])
         ).distinct().order_by(MonthlyCurrencySummary.month_period.desc()).all()
         
         month_list = [
@@ -1562,6 +1616,50 @@ def get_saved_months():
         return jsonify({
             "success": False,
             "error": str(e)
+        }), 500
+
+
+# ============================================================================
+# SECURITY PIN VALIDATION ENDPOINT
+# ============================================================================
+
+@accounting_api.route("/validate-pin", methods=["POST"])  # /api/v1/accounting/validate-pin
+@limiter.limit("5 per minute, 20 per hour")  # Strict rate limiting to prevent brute force
+@login_required
+def validate_security_pin():
+    """Validate security PIN for sensitive operations"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "Missing request body"}), 400
+        
+        pin = data.get("pin", "")
+        if not pin:
+            return jsonify({"success": False, "error": "PIN is required"}), 400
+        
+        from flask import current_app
+        expected_code = current_app.config.get('BULK_DELETE_CONFIRMATION_CODE', '4561')
+        
+        if pin == expected_code:
+            logger.info(f"PIN validated successfully for user {current_user.id if current_user.is_authenticated else 'anonymous'}")
+            return jsonify({
+                "success": True,
+                "valid": True,
+                "message": "PIN validated successfully"
+            }), 200
+        else:
+            logger.warning(f"Invalid PIN attempt by user {current_user.id if current_user.is_authenticated else 'anonymous'}")
+            return jsonify({
+                "success": True,
+                "valid": False,
+                "message": "Invalid PIN"
+            }), 200
+            
+    except Exception as e:
+        logger.error(f"Error validating PIN: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": f"Failed to validate PIN: {str(e)}"
         }), 500
 
 

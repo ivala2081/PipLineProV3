@@ -63,8 +63,15 @@ export const useLazyLoading = (
   const loadComponent = useCallback(async (): Promise<void> => {
     const key = cacheKey.current;
 
+    // #region agent log
+    fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useLazyLoading.ts:loadComponent',message:'loadComponent called',data:{cacheKey:key.substring(0,50),hasCache:cache&&componentCache.has(key)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+
     // Check cache first
     if (cache && componentCache.has(key)) {
+      // #region agent log
+      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useLazyLoading.ts:loadComponent',message:'Using cached component',data:{cacheKey:key.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       setState(prev => ({
         ...prev,
         isLoaded: true,
@@ -81,7 +88,14 @@ export const useLazyLoading = (
     }));
 
     try {
+      // #region agent log
+      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useLazyLoading.ts:loadComponent',message:'Calling importFn',data:{cacheKey:key.substring(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,D'})}).catch(()=>{});
+      // #endregion
       const component = await importFnRef.current();
+      
+      // #region agent log
+      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useLazyLoading.ts:loadComponent',message:'Import succeeded',data:{hasComponent:!!component,hasDefault:!!component?.default,keys:component?Object.keys(component).slice(0,10):[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,D'})}).catch(()=>{});
+      // #endregion
       
       // Validate that component has a default export
       if (!component || !component.default) {
@@ -101,6 +115,9 @@ export const useLazyLoading = (
         retryCount: 0,
       }));
     } catch (error) {
+      // #region agent log
+      fetch('/api/v1/monitoring/client-log',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useLazyLoading.ts:loadComponent',message:'Import failed',data:{errorName:(error as Error)?.name,errorMessage:(error as Error)?.message,errorStack:(error as Error)?.stack?.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,D'})}).catch(()=>{});
+      // #endregion
       const err = error as Error;
       const isChunkError = 
         err.message?.includes('Failed to fetch') ||
